@@ -12,8 +12,6 @@ import type {
 } from './types';
 
 const SYNTHETIC_ORIGIN = 'https://miniapp.local';
-const REPLAY_PACKAGE_NAME = '@xumoses/sentry-miniapp-replay-taro';
-const REPLAY_PACKAGE_VERSION = '0.1.0-alpha.0';
 
 function normalizeRoute(value: string | undefined): string {
   const route = sanitizeUrl(value || 'unknown').replace(/^\/+/, '');
@@ -152,7 +150,6 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
           sdk: {
             name: options.sdk.SDK_NAME || 'sentry.javascript.miniapp',
             version: options.sdk.SDK_VERSION || 'unknown',
-            packages: [{ name: REPLAY_PACKAGE_NAME, version: REPLAY_PACKAGE_VERSION }],
           },
           tags: {
             'replay.adapter': 'taro',

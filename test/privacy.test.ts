@@ -12,13 +12,30 @@ describe('Replay privacy helpers', () => {
   test('filters nested sensitive keys and circular values', () => {
     const value: Record<string, unknown> = {
       url: 'https://example.test/api?token=secret',
-      request: { authorization: 'Bearer secret', method: 'GET' },
+      avatarUrl: 'https://example.test/avatar.png?signature=secret',
+      urls: [
+        'https://example.test/first?token=secret',
+        'https://example.test/second#private',
+      ],
+      request: {
+        authorization: 'Bearer secret',
+        accessToken: 'secret',
+        requestBody: 'private',
+        method: 'GET',
+      },
     };
     value.self = value;
 
     expect(sanitizeRecord(value)).toEqual({
       url: 'https://example.test/api',
-      request: { authorization: '[Filtered]', method: 'GET' },
+      avatarUrl: 'https://example.test/avatar.png',
+      urls: ['https://example.test/first', 'https://example.test/second'],
+      request: {
+        authorization: '[Filtered]',
+        accessToken: '[Filtered]',
+        requestBody: '[Filtered]',
+        method: 'GET',
+      },
       self: '[Filtered]',
     });
   });
@@ -48,4 +65,3 @@ describe('Replay privacy helpers', () => {
     });
   });
 });
-

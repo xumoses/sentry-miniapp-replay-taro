@@ -3,8 +3,12 @@ import type { Breadcrumb } from '@sentry/core';
 const FILTERED = '[Filtered]';
 const MAX_DEPTH = 8;
 const SENSITIVE_KEY =
-  /(?:^|[_-])(?:authorization|cookie|set-cookie|token|password|passwd|secret|api-key|apikey|session|openid|unionid|phone|email|idcard|identity|user|account|order|contract|body|headers)(?:$|[_-])/i;
-const URL_KEY = /(?:^|[_-])(?:url|uri|href|src|action|from|to)(?:$|[_-])/i;
+  /(?:^|[_-])(?:authorization|cookie|set-cookie|token|password|passwd|secret|api[_-]?key|apikey|session|openid|unionid|phone|email|idcard|identity|user|account|order|contract|body|headers)(?:$|[_-])/i;
+const URL_KEY = /(?:^|[_-])(?:urls?|uris?|hrefs?|srcs?|action|from|to)(?:$|[_-])/i;
+
+function normalizedKey(value: string): string {
+  return value.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
 
 export function sanitizeUrl(value: string): string {
   if (/^data:/i.test(value)) {
@@ -25,8 +29,9 @@ function sanitizeValue(
   seen: WeakSet<object>,
   depth: number,
 ): unknown {
-  if (SENSITIVE_KEY.test(key)) return FILTERED;
-  if (typeof value === 'string') return URL_KEY.test(key) ? sanitizeUrl(value) : value;
+  const safeKey = normalizedKey(key);
+  if (SENSITIVE_KEY.test(safeKey)) return FILTERED;
+  if (typeof value === 'string') return URL_KEY.test(safeKey) ? sanitizeUrl(value) : value;
   if (value === null || typeof value !== 'object') return value;
   if (depth >= MAX_DEPTH) return FILTERED;
   if (seen.has(value)) return FILTERED;
@@ -57,4 +62,3 @@ export function sanitizeBreadcrumb(
     ...(breadcrumb.data ? { data: sanitizeRecord(breadcrumb.data) } : {}),
   };
 }
-

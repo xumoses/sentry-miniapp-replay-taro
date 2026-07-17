@@ -7,12 +7,14 @@ import {
 import { makeCapture } from './fixtures';
 
 describe('Sentry Replay envelope', () => {
-  test('serializes the segment header and rrweb events as newline-delimited JSON', () => {
+  test('serializes the segment header and rrweb events array in Sentry recording format', () => {
     const recording = serializeReplayRecording(makeCapture());
     const lines = recording.split('\n');
 
     expect(JSON.parse(lines[0]!)).toEqual({ segment_id: 0 });
-    expect(JSON.parse(lines[1]!)).toMatchObject({ type: 4, data: { title: '你好' } });
+    expect(JSON.parse(lines[1]!)).toEqual([
+      expect.objectContaining({ type: 4, data: { title: '你好' } }),
+    ]);
     expect(utf8ByteLength('A你好')).toBe(7);
   });
 

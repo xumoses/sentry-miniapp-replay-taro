@@ -238,7 +238,7 @@
           <h2>上传 capture</h2>
           <form id="upload-form">
             <div class="field">
-              <label for="capture-file">JSON 文件（最大 5 MiB）</label>
+              <label id="upload-limit-label" for="capture-file">JSON 文件（读取服务器上限中…）</label>
               <input id="capture-file" type="file" accept="application/json,.json" />
             </div>
             <div class="field">
@@ -281,8 +281,9 @@
     <script nonce="{{NONCE}}">
       'use strict';
 
-      const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+      let maxUploadBytes = Number.POSITIVE_INFINITY;
       const fileInput = document.querySelector('#capture-file');
+      const uploadLimitLabel = document.querySelector('#upload-limit-label');
       const jsonInput = document.querySelector('#capture-json');
       const statusElement = document.querySelector('#status');
       const listElement = document.querySelector('#capture-list');
@@ -368,6 +369,10 @@
       async function refreshList() {
         try {
           const value = await request('/api/captures');
+          if (Number.isFinite(value.limits?.maxUploadBytes)) {
+            maxUploadBytes = value.limits.maxUploadBytes;
+            uploadLimitLabel.textContent = `JSON 文件（最大 ${readableBytes(maxUploadBytes)}）`;
+          }
           renderList(value.captures);
           return value.captures;
         } catch (error) {
@@ -379,9 +384,9 @@
       fileInput.addEventListener('change', async () => {
         const file = fileInput.files?.[0];
         if (!file) return;
-        if (file.size > MAX_UPLOAD_BYTES) {
+        if (file.size > maxUploadBytes) {
           fileInput.value = '';
-          setStatus('文件超过 5 MiB 上限。', 'error');
+          setStatus(`文件超过 ${readableBytes(maxUploadBytes)} 上限。`, 'error');
           return;
         }
 
@@ -396,8 +401,8 @@
           setStatus('请选择文件或粘贴 capture JSON。', 'error');
           return;
         }
-        if (new TextEncoder().encode(text).byteLength > MAX_UPLOAD_BYTES) {
-          setStatus('JSON 超过 5 MiB 上限。', 'error');
+        if (new TextEncoder().encode(text).byteLength > maxUploadBytes) {
+          setStatus(`JSON 超过 ${readableBytes(maxUploadBytes)} 上限。`, 'error');
           return;
         }
 

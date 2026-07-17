@@ -1,11 +1,4 @@
 export { createTaroReplay } from './createTaroReplay';
-export {
-  createReplayEnvelope,
-  sendReplayCapture,
-  serializeReplayRecording,
-  utf8ByteLength,
-} from './envelope';
-export { sanitizeBreadcrumb, sanitizeRecord, sanitizeUrl } from './privacy';
 export type {
   CreateTaroReplayOptions,
   SentryMiniappReplaySdk,
@@ -25,4 +18,3 @@ export type {
   UseTaroReplayOptions,
   UseTaroReplayResult,
 } from './types';
-

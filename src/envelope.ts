@@ -21,9 +21,7 @@ export function utf8ByteLength(value: string): number {
 }
 
 export function serializeReplayRecording(capture: TaroReplayCapture): string {
-  return [JSON.stringify({ segment_id: 0 }), ...capture.events.map(event => JSON.stringify(event))].join(
-    '\n',
-  );
+  return `${JSON.stringify({ segment_id: 0 })}\n${JSON.stringify(capture.events)}`;
 }
 
 export function createReplayEnvelope(
