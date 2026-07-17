@@ -20,7 +20,7 @@ Sentry.init({
 如果内部项目使用重命名包，只需把 import 改成：
 
 ```ts
-import * as Sentry from '@xumoses/sentry-mini';
+import * as Sentry from '@xumoses/sentry-miniapp';
 ```
 
 传给 `useTaroReplay({ sdk: Sentry })` 的仍然是完整 SDK namespace，页面的其他代码

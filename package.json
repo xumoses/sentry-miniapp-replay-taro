@@ -1,8 +1,13 @@
 {
   "name": "@xumoses/sentry-miniapp-replay-taro",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-beta.0",
   "description": "Experimental Taro virtual-DOM Session Replay adapter for sentry-miniapp",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xumoses/sentry-miniapp-replay-taro.git"
+  },
+  "homepage": "https://github.com/xumoses/sentry-miniapp-replay-taro",
   "type": "commonjs",
   "main": "./dist/index.cjs.js",
   "module": "./dist/index.mjs",
@@ -36,7 +41,15 @@
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
     "lint": "eslint src test",
-    "pack:check": "npm pack --dry-run --ignore-scripts"
+    "verify:beta-release": "node scripts/verify-beta-release.cjs",
+    "prepack": "npm run verify:beta-release",
+    "prepublishOnly": "npm run verify:beta-release && npm run typecheck && npm run lint && npm test && npm run build",
+    "pack:check": "npm run verify:beta-release && npm run build && npm pack --dry-run --ignore-scripts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta",
+    "registry": "https://registry.npmjs.org/"
   },
   "engines": {
     "node": ">=20"

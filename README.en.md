@@ -17,7 +17,7 @@ into a Sentry Replay envelope.
   root;
 - one Replay segment sent after a manual stop or duration limit;
 - an injected SDK namespace from either the community `sentry-miniapp` package
-  or the internally renamed `@xumoses/sentry-mini` package.
+  or the internally renamed `@xumoses/sentry-miniapp` package.
 
 It does not currently support native Mini Program DOM, Vue/uni-app, mini games,
 Canvas, WebView, nodes inside native components, continuous multi-page
@@ -28,7 +28,7 @@ platforms and Taro versions have not been systematically validated.
 ## Installation
 
 ```sh
-npm install @xumoses/sentry-miniapp-replay-taro
+npm install @xumoses/sentry-miniapp-replay-taro@beta
 ```
 
 The host application must also install Taro, React, `@sentry/core`, and one of
@@ -37,7 +37,7 @@ these SDK namespaces:
 ```sh
 npm install sentry-miniapp
 # or
-npm install @xumoses/sentry-mini
+npm install @xumoses/sentry-miniapp@beta
 ```
 
 ## React usage
@@ -121,9 +121,11 @@ example.
 
 ## Versioning
 
-Before `1.0.0`, minor releases may change the API or envelope structure. Re-test
-privacy masking, page lifecycle behavior, payload size, and Sentry ingestion in
-the WeChat developer tools and on target devices after upgrading.
+This package currently publishes only the `beta` dist-tag and uses
+`x.y.z-beta.N` versions; it never publishes `latest` or a stable version.
+Before `1.0.0`, minor releases may change the API or envelope structure.
+Re-test privacy masking, page lifecycle behavior, payload size, and Sentry
+ingestion in the WeChat developer tools and on target devices after upgrading.
 
 ## License
 

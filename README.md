@@ -13,7 +13,7 @@
 - Taro `4.2.x`、React 18、微信小程序开发者工具；
 - 单个 Taro 页面根节点的初始快照、DOM mutation 和 Sentry breadcrumb；
 - 手动停止或达到时长上限后，通过当前 Sentry client 发送一个 Replay segment；
-- 可注入社区版 `sentry-miniapp` 或内部重命名包 `@xumoses/sentry-mini` 的 SDK
+- 可注入社区版 `sentry-miniapp` 或内部重命名包 `@xumoses/sentry-miniapp` 的 SDK
   namespace。
 
 暂不支持原生小程序 DOM、Vue/uni-app、小游戏、Canvas、WebView、原生组件内部节点、
@@ -23,7 +23,7 @@ Session Replay 的全部事件类型。在非微信平台或不同 Taro 版本�
 ## 安装
 
 ```sh
-npm install @xumoses/sentry-miniapp-replay-taro
+npm install @xumoses/sentry-miniapp-replay-taro@beta
 ```
 
 宿主项目还需要安装 Taro、React、`@sentry/core`，以及以下两个 SDK namespace
@@ -32,7 +32,7 @@ npm install @xumoses/sentry-miniapp-replay-taro
 ```sh
 npm install sentry-miniapp
 # 或
-npm install @xumoses/sentry-mini
+npm install @xumoses/sentry-miniapp@beta
 ```
 
 ## React 用法
@@ -106,8 +106,10 @@ npx sentry-miniapp-replay-taro-viewer
 
 ## 版本策略
 
-在 `1.0.0` 前，minor 版本可能包含 API 或 envelope 结构调整。升级时应在微信开发者工具
-和目标真机上重新验证隐私遮罩、页面生命周期、payload 大小及 Sentry ingestion 结果。
+当前只发布 `beta` dist-tag，版本号固定使用 `x.y.z-beta.N`；不会发布 `latest`
+或稳定版本。在 `1.0.0` 前，minor 版本可能包含 API 或 envelope 结构调整。升级时应在
+微信开发者工具和目标真机上重新验证隐私遮罩、页面生命周期、payload 大小及 Sentry
+ingestion 结果。
 
 ## License
 

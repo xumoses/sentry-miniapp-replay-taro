@@ -74,7 +74,7 @@ export interface SentryReplayClient {
   sendEnvelope(envelope: ReplayEnvelope): PromiseLike<unknown>;
 }
 
-/** Structural interface accepted from either sentry-miniapp or @xumoses/sentry-mini. */
+/** Structural interface accepted from either sentry-miniapp or @xumoses/sentry-miniapp. */
 export interface SentryMiniappReplaySdk {
   SDK_NAME?: string;
   SDK_VERSION?: string;
