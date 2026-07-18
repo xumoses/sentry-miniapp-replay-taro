@@ -59,7 +59,9 @@ export function makeSdk(): {
   getDetachCount(): number;
 } {
   let startOptions: StartTaroReplayRecorderOptions | undefined;
-  let breadcrumbHook: ((breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]) => void) | undefined;
+  let breadcrumbHook:
+    | ((breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]) => void)
+    | undefined;
   let detachCount = 0;
   let capture = makeCapture({ endedAt: null, stopReason: null, events: [] });
   const sendEnvelope = jest.fn(() => Promise.resolve({ statusCode: 200 }));
@@ -90,8 +92,8 @@ export function makeSdk(): {
       },
       sendEnvelope,
     }),
-    addBreadcrumb: breadcrumb => breadcrumbHook?.(breadcrumb),
-    startTaroDomReplayPoc: options => {
+    addBreadcrumb: (breadcrumb) => breadcrumbHook?.(breadcrumb),
+    startTaroDomReplayPoc: (options) => {
       startOptions = options;
       capture = {
         ...capture,
@@ -106,7 +108,7 @@ export function makeSdk(): {
     sdk,
     sendEnvelope,
     addRecordedBreadcrumb,
-    emitBreadcrumb: breadcrumb => breadcrumbHook?.(breadcrumb),
+    emitBreadcrumb: (breadcrumb) => breadcrumbHook?.(breadcrumb),
     getStartOptions: () => {
       if (!startOptions) throw new Error('Replay was not started');
       return startOptions;

@@ -53,9 +53,7 @@ export default function CheckoutPage() {
 
   return (
     <View>
-      <Button onClick={() => void replay.stop('manual')}>
-        停止并发送 Replay
-      </Button>
+      <Button onClick={() => void replay.stop('manual')}>停止并发送 Replay</Button>
     </View>
   );
 }

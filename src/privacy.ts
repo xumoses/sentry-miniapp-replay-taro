@@ -23,12 +23,7 @@ export function sanitizeUrl(value: string): string {
   );
 }
 
-function sanitizeValue(
-  value: unknown,
-  key: string,
-  seen: WeakSet<object>,
-  depth: number,
-): unknown {
+function sanitizeValue(value: unknown, key: string, seen: WeakSet<object>, depth: number): unknown {
   const safeKey = normalizedKey(key);
   if (SENSITIVE_KEY.test(safeKey)) return FILTERED;
   if (typeof value === 'string') return URL_KEY.test(safeKey) ? sanitizeUrl(value) : value;
@@ -38,7 +33,7 @@ function sanitizeValue(
 
   seen.add(value);
   if (Array.isArray(value)) {
-    return value.map(item => sanitizeValue(item, key, seen, depth + 1));
+    return value.map((item) => sanitizeValue(item, key, seen, depth + 1));
   }
 
   const result: Record<string, unknown> = {};

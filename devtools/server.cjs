@@ -20,7 +20,7 @@ let totalBytes = 0;
 
 function readPort() {
   const args = process.argv.slice(2);
-  const equalsArgument = args.find(argument => argument.startsWith('--port='));
+  const equalsArgument = args.find((argument) => argument.startsWith('--port='));
   const separateIndex = args.indexOf('--port');
   const raw = equalsArgument
     ? equalsArgument.slice('--port='.length)
@@ -104,7 +104,9 @@ function readJsonBody(request) {
     const contentLength = Number(request.headers['content-length']);
     if (Number.isFinite(contentLength) && contentLength > MAX_UPLOAD_BYTES) {
       request.resume();
-      reject(Object.assign(new Error('Capture exceeds the 5 MiB upload limit.'), { statusCode: 413 }));
+      reject(
+        Object.assign(new Error('Capture exceeds the 5 MiB upload limit.'), { statusCode: 413 }),
+      );
       return;
     }
 
@@ -116,7 +118,7 @@ function readJsonBody(request) {
       request.destroy(new Error('Upload timed out.'));
     });
 
-    request.on('data', chunk => {
+    request.on('data', (chunk) => {
       byteLength += chunk.length;
       if (byteLength > MAX_UPLOAD_BYTES) {
         exceededLimit = true;
@@ -129,7 +131,9 @@ function readJsonBody(request) {
 
     request.on('end', () => {
       if (exceededLimit) {
-        reject(Object.assign(new Error('Capture exceeds the 5 MiB upload limit.'), { statusCode: 413 }));
+        reject(
+          Object.assign(new Error('Capture exceeds the 5 MiB upload limit.'), { statusCode: 413 }),
+        );
         return;
       }
 
@@ -154,7 +158,11 @@ function validateCapture(value) {
     return 'Capture.marker must be a short string.';
   }
 
-  if (typeof value.replayId !== 'string' || value.replayId.length < 1 || value.replayId.length > 128) {
+  if (
+    typeof value.replayId !== 'string' ||
+    value.replayId.length < 1 ||
+    value.replayId.length > 128
+  ) {
     return 'Capture.replayId must be a non-empty string.';
   }
 
@@ -317,7 +325,7 @@ server.on('clientError', (_error, socket) => {
   }
 });
 
-server.on('error', error => {
+server.on('error', (error) => {
   console.error(`Replay viewer failed: ${error.message}`);
   process.exitCode = 1;
 });

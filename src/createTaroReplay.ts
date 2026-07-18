@@ -103,7 +103,9 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       if (!shouldSendCapture(options, capture.stopReason)) return;
       const client = options.sdk.getClient();
       if (!client || typeof client.sendEnvelope !== 'function') {
-        throw new Error('[sentry-miniapp-replay-taro] Cannot send Replay without an initialized client');
+        throw new Error(
+          '[sentry-miniapp-replay-taro] Cannot send Replay without an initialized client',
+        );
       }
       await sendReplayCapture(client, capture);
     })();
@@ -155,18 +157,14 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
             'replay.adapter': 'taro',
             'miniapp.platform': platform,
             'page.route': route,
-            ...(options.frameworkVersion
-              ? { 'taro.version': options.frameworkVersion }
-              : {}),
+            ...(options.frameworkVersion ? { 'taro.version': options.frameworkVersion } : {}),
             ...(account?.miniProgram?.envVersion
               ? { 'miniapp.env_version': account.miniProgram.envVersion }
               : {}),
             ...(account?.miniProgram?.version
               ? { 'miniapp.version': account.miniProgram.version }
               : {}),
-            ...(appBase?.SDKVersion
-              ? { 'miniapp.base_library': appBase.SDKVersion }
-              : {}),
+            ...(appBase?.SDKVersion ? { 'miniapp.base_library': appBase.SDKVersion } : {}),
           },
           contexts: {
             miniapp: {
@@ -176,9 +174,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
               ...(account?.miniProgram?.envVersion
                 ? { environment: account.miniProgram.envVersion }
                 : {}),
-              ...(account?.miniProgram?.version
-                ? { version: account.miniProgram.version }
-                : {}),
+              ...(account?.miniProgram?.version ? { version: account.miniProgram.version } : {}),
               ...(appBase?.SDKVersion ? { base_library: appBase.SDKVersion } : {}),
             },
           },
@@ -197,7 +193,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         maskInputValues: options.privacy?.maskInputValues !== false,
         ...options.limits,
         metadata,
-        onStop: capture => {
+        onStop: (capture) => {
           void finalize(capture);
         },
       });

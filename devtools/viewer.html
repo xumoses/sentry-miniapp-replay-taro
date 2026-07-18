@@ -8,8 +8,13 @@
       :root {
         color-scheme: light dark;
         font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
+          Inter,
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
         line-height: 1.5;
       }
 
@@ -228,8 +233,8 @@
     <header>
       <h1>Experimental Taro Replay Capture Viewer</h1>
       <p>
-        本地检查 recorder capture 的摘要、事件和原始 JSON。数据只保存在当前 Node
-        进程内；这不是生产 ingestion 服务，也不是完整的可视化回放器。
+        本地检查 recorder capture 的摘要、事件和原始 JSON。数据只保存在当前 Node 进程内；这不是生产
+        ingestion 服务，也不是完整的可视化回放器。
       </p>
     </header>
     <main>
@@ -238,7 +243,9 @@
           <h2>上传 capture</h2>
           <form id="upload-form">
             <div class="field">
-              <label id="upload-limit-label" for="capture-file">JSON 文件（读取服务器上限中…）</label>
+              <label id="upload-limit-label" for="capture-file"
+                >JSON 文件（读取服务器上限中…）</label
+              >
               <input id="capture-file" type="file" accept="application/json,.json" />
             </div>
             <div class="field">
@@ -394,7 +401,7 @@
         setStatus(`已读取 ${file.name}（${readableBytes(file.size)}）。`);
       });
 
-      document.querySelector('#upload-form').addEventListener('submit', async event => {
+      document.querySelector('#upload-form').addEventListener('submit', async (event) => {
         event.preventDefault();
         const text = jsonInput.value.trim();
         if (!text) {

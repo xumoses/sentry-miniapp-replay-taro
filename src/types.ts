@@ -43,9 +43,7 @@ export interface TaroReplayRecorderController {
 
 export interface StartTaroReplayRecorderOptions {
   root: unknown;
-  MutationObserver: new (
-    callback: (records: unknown[]) => void,
-  ) => {
+  MutationObserver: new (callback: (records: unknown[]) => void) => {
     observe(target: unknown, options: Record<string, boolean>): void;
     disconnect(): void;
   };

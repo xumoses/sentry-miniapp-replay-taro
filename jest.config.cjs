@@ -4,4 +4,3 @@ module.exports = {
   testMatch: ['<rootDir>/test/**/*.test.ts'],
   clearMocks: true,
 };
-

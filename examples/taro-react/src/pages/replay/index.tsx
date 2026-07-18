@@ -17,10 +17,9 @@ export default function ReplaySyntheticPage() {
     <View>
       <Text>Replay state: {replay.state}</Text>
       <Text>Synthetic count: {count}</Text>
-      <Button onClick={() => setCount(value => value + 1)}>Increase synthetic count</Button>
+      <Button onClick={() => setCount((value) => value + 1)}>Increase synthetic count</Button>
       <Button onClick={() => void replay.stop('manual')}>Stop and send Replay</Button>
       {replay.error ? <Text>Replay error: {replay.error.message}</Text> : null}
     </View>
   );
 }
-

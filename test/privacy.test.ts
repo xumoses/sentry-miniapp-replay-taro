@@ -13,10 +13,7 @@ describe('Replay privacy helpers', () => {
     const value: Record<string, unknown> = {
       url: 'https://example.test/api?token=secret',
       avatarUrl: 'https://example.test/avatar.png?signature=secret',
-      urls: [
-        'https://example.test/first?token=secret',
-        'https://example.test/second#private',
-      ],
+      urls: ['https://example.test/first?token=secret', 'https://example.test/second#private'],
       request: {
         authorization: 'Bearer secret',
         accessToken: 'secret',
