@@ -16,7 +16,7 @@ export default defineConfig({
       // `.cjs.js` keeps Node's CJS resolution and old Mini Program tooling aligned.
       fileName: (format, entryName) => `${entryName}.${format === 'es' ? 'mjs' : 'cjs.js'}`,
     },
-    rollupOptions: {
+    rolldownOptions: {
       external: ['@sentry/core', '@tarojs/runtime', '@tarojs/taro', 'react'],
     },
     sourcemap: true,
