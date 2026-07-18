@@ -1,4 +1,4 @@
-import type { Breadcrumb, ReplayEnvelope, SdkInfo } from '@sentry/core';
+import type { Breadcrumb, ReplayEnvelope } from '@sentry/core';
 
 export interface TaroReplayEvent {
   type: number;
@@ -9,10 +9,51 @@ export interface TaroReplayEvent {
 export interface TaroReplayMetadata {
   environment?: string;
   release?: string;
-  sdk?: SdkInfo;
+  sdk?: {
+    name: string;
+    version: string;
+  };
   user?: Record<string, unknown>;
   tags?: Record<string, string | number | boolean>;
   contexts?: Record<string, Record<string, unknown>>;
+}
+
+export interface TaroReplayAttributeLike {
+  name: string;
+  value: unknown;
+}
+
+export interface TaroReplayNodeLike {
+  nodeType: number;
+  nodeName?: string;
+  tagName?: string;
+  sid?: string;
+  uid?: string;
+  textContent?: string | null;
+  parentNode?: TaroReplayNodeLike | null;
+  childNodes?: TaroReplayNodeLike[];
+  attributes?: TaroReplayAttributeLike[] | ArrayLike<TaroReplayAttributeLike>;
+  getAttribute?: (name: string) => unknown;
+  hasAttribute?: (name: string) => boolean;
+}
+
+export interface TaroReplayMutationRecordLike {
+  type: 'attributes' | 'characterData' | 'childList';
+  target: TaroReplayNodeLike;
+  addedNodes?: TaroReplayNodeLike[] | ArrayLike<TaroReplayNodeLike>;
+  removedNodes?: TaroReplayNodeLike[] | ArrayLike<TaroReplayNodeLike>;
+  nextSibling?: TaroReplayNodeLike | null;
+  previousSibling?: TaroReplayNodeLike | null;
+  attributeName?: string | null;
+}
+
+export interface TaroReplayMutationObserverLike {
+  observe(target: TaroReplayNodeLike, options: Record<string, boolean>): void;
+  disconnect(): void;
+}
+
+export interface TaroReplayMutationObserverConstructor {
+  new (callback: (records: TaroReplayMutationRecordLike[]) => void): TaroReplayMutationObserverLike;
 }
 
 export interface TaroReplayCapture {
@@ -24,7 +65,7 @@ export interface TaroReplayCapture {
   endedAt: number | null;
   stopReason: string | null;
   events: TaroReplayEvent[];
-  metadata?: TaroReplayMetadata;
+  metadata?: TaroReplayMetadata | undefined;
   stats: {
     eventCount: number;
     mutationCount: number;
@@ -42,11 +83,8 @@ export interface TaroReplayRecorderController {
 }
 
 export interface StartTaroReplayRecorderOptions {
-  root: unknown;
-  MutationObserver: new (callback: (records: unknown[]) => void) => {
-    observe(target: unknown, options: Record<string, boolean>): void;
-    disconnect(): void;
-  };
+  root: TaroReplayNodeLike;
+  MutationObserver: TaroReplayMutationObserverConstructor;
   href?: string;
   width?: number;
   height?: number;
@@ -62,8 +100,8 @@ export interface StartTaroReplayRecorderOptions {
 export interface SentryReplayClient {
   getDsn?(): { toString(): string } | undefined;
   getOptions?(): {
-    environment?: string;
-    release?: string;
+    environment?: string | undefined;
+    release?: string | undefined;
   };
   on?(
     hook: 'beforeAddBreadcrumb',
@@ -82,7 +120,7 @@ export interface SentryMiniappReplaySdk {
 }
 
 export interface TaroReplayRuntime {
-  document: { getElementById(id: string): unknown | null };
+  document: { getElementById(id: string): TaroReplayNodeLike | null };
   MutationObserver: StartTaroReplayRecorderOptions['MutationObserver'];
   getCurrentInstance(): {
     router?: {

@@ -2,6 +2,7 @@ import type {
   SentryMiniappReplaySdk,
   StartTaroReplayRecorderOptions,
   TaroReplayCapture,
+  TaroReplayNodeLike,
   TaroReplayRecorderController,
   TaroReplayRuntime,
 } from '../src/types';
@@ -35,7 +36,7 @@ export function makeCapture(overrides: Partial<TaroReplayCapture> = {}): TaroRep
   };
 }
 
-export function makeRuntime(root: unknown = { nodeType: 1 }): TaroReplayRuntime {
+export function makeRuntime(root: TaroReplayNodeLike | null = { nodeType: 1 }): TaroReplayRuntime {
   return {
     document: { getElementById: jest.fn(() => root) },
     MutationObserver: class {
