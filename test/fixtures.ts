@@ -1,3 +1,5 @@
+import { type Mock, vi } from 'vitest';
+
 import type {
   SentryMiniappReplaySdk,
   StartTaroReplayRecorderOptions,
@@ -38,7 +40,7 @@ export function makeCapture(overrides: Partial<TaroReplayCapture> = {}): TaroRep
 
 export function makeRuntime(root: TaroReplayNodeLike | null = { nodeType: 1 }): TaroReplayRuntime {
   return {
-    document: { getElementById: jest.fn(() => root) },
+    document: { getElementById: vi.fn(() => root) },
     MutationObserver: class {
       observe(): void {}
       disconnect(): void {}
@@ -53,8 +55,8 @@ export function makeRuntime(root: TaroReplayNodeLike | null = { nodeType: 1 }): 
 
 export function makeSdk(): {
   sdk: SentryMiniappReplaySdk;
-  sendEnvelope: jest.Mock;
-  addRecordedBreadcrumb: jest.Mock;
+  sendEnvelope: Mock;
+  addRecordedBreadcrumb: Mock;
   emitBreadcrumb(breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]): void;
   getStartOptions(): StartTaroReplayRecorderOptions;
   getDetachCount(): number;
@@ -65,8 +67,8 @@ export function makeSdk(): {
     | undefined;
   let detachCount = 0;
   let capture = makeCapture({ endedAt: null, stopReason: null, events: [] });
-  const sendEnvelope = jest.fn(() => Promise.resolve({ statusCode: 200 }));
-  const addRecordedBreadcrumb = jest.fn(() => true);
+  const sendEnvelope = vi.fn(() => Promise.resolve({ statusCode: 200 }));
+  const addRecordedBreadcrumb = vi.fn(() => true);
   const controller: TaroReplayRecorderController = {
     addBreadcrumb: addRecordedBreadcrumb,
     getCapture: () => ({ ...capture, events: [...capture.events] }),

@@ -10,7 +10,7 @@
     "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx",
     "noEmit": true,
-    "types": ["jest"]
+    "types": ["node"]
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "vite.config.ts", "vitest.config.ts"]
 }

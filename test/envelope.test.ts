@@ -1,3 +1,6 @@
+import type { ReplayEnvelope } from '@sentry/core';
+import { describe, expect, test, vi } from 'vitest';
+
 import {
   createReplayEnvelope,
   sendReplayCapture,
@@ -48,7 +51,7 @@ describe('Sentry Replay envelope', () => {
   });
 
   test('sends through the initialized SDK client instead of raw DSN fetch', async () => {
-    const sendEnvelope = jest.fn((envelope: ReplayEnvelope) => Promise.resolve(envelope));
+    const sendEnvelope = vi.fn((envelope: ReplayEnvelope) => Promise.resolve(envelope));
     await sendReplayCapture(
       {
         getDsn: () => ({ toString: () => 'https://public@example.test/1' }),
@@ -61,4 +64,3 @@ describe('Sentry Replay envelope', () => {
     expect(sendEnvelope.mock.calls[0]![0][1][0][0]).toEqual({ type: 'replay_event' });
   });
 });
-import type { ReplayEnvelope } from '@sentry/core';

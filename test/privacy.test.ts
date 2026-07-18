@@ -1,3 +1,5 @@
+import { describe, expect, test } from 'vitest';
+
 import { sanitizeBreadcrumb, sanitizeRecord, sanitizeUrl } from '../src/privacy';
 
 describe('Replay privacy helpers', () => {

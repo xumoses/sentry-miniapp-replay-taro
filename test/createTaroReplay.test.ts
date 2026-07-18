@@ -1,3 +1,5 @@
+import { describe, expect, test, vi } from 'vitest';
+
 import { createTaroReplay } from '../src/createTaroReplay';
 import { makeRuntime, makeSdk } from './fixtures';
 
@@ -72,7 +74,7 @@ describe('createTaroReplay', () => {
 
   test('finalizes and sends exactly once through Client.sendEnvelope', async () => {
     const fixture = makeSdk();
-    const onCapture = jest.fn();
+    const onCapture = vi.fn();
     const replay = createTaroReplay({
       sdk: fixture.sdk,
       runtime: makeRuntime(),
@@ -103,7 +105,7 @@ describe('createTaroReplay', () => {
 
   test('reports a missing mounted root without throwing from lifecycle hooks', () => {
     const fixture = makeSdk();
-    const onError = jest.fn();
+    const onError = vi.fn();
     const replay = createTaroReplay({
       sdk: fixture.sdk,
       runtime: makeRuntime(null),
