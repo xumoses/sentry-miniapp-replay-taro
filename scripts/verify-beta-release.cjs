@@ -27,7 +27,7 @@ if (packageJson.publishConfig?.registry !== "https://registry.npmjs.org/") {
 }
 if (process.env.npm_config_tag && process.env.npm_config_tag !== "beta") {
   failures.push(
-    `npm publish tag must be beta, got ${process.env.npm_config_tag}`,
+    `publish tag must be beta, got ${process.env.npm_config_tag}`,
   );
 }
 

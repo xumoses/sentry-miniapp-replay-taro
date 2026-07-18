@@ -28,16 +28,16 @@ platforms and Taro versions have not been systematically validated.
 ## Installation
 
 ```sh
-npm install @xumoses/sentry-miniapp-replay-taro@beta
+pnpm add @xumoses/sentry-miniapp-replay-taro@beta
 ```
 
 The host application must also install Taro, React, `@sentry/core`, and one of
 these SDK namespaces:
 
 ```sh
-npm install sentry-miniapp
+pnpm add sentry-miniapp
 # or
-npm install @xumoses/sentry-miniapp@beta
+pnpm add @xumoses/sentry-miniapp@beta
 ```
 
 ## React usage
@@ -107,7 +107,7 @@ enabling unload delivery.
 The published package includes a development-only, in-memory capture viewer:
 
 ```sh
-npx sentry-miniapp-replay-taro-viewer
+pnpm dlx --package=@xumoses/sentry-miniapp-replay-taro@beta sentry-miniapp-replay-taro-viewer
 # open http://127.0.0.1:4178
 ```
 

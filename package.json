@@ -42,9 +42,9 @@
     "test": "jest --runInBand",
     "lint": "eslint src test",
     "verify:beta-release": "node scripts/verify-beta-release.cjs",
-    "prepack": "npm run verify:beta-release",
-    "prepublishOnly": "npm run verify:beta-release && npm run typecheck && npm run lint && npm test && npm run build",
-    "pack:check": "npm run verify:beta-release && npm run build && npm pack --dry-run --ignore-scripts"
+    "prepack": "pnpm run verify:beta-release",
+    "prepublishOnly": "pnpm run verify:beta-release && pnpm run typecheck && pnpm run lint && pnpm test && pnpm run build",
+    "pack:check": "pnpm run verify:beta-release && pnpm run build && pnpm pack --dry-run"
   },
   "publishConfig": {
     "access": "public",
@@ -54,7 +54,7 @@
   "engines": {
     "node": ">=20"
   },
-  "packageManager": "npm@11.16.0",
+  "packageManager": "pnpm@10.34.4",
   "peerDependencies": {
     "@sentry/core": "^10.63.0",
     "@tarojs/runtime": "^4.2.0",

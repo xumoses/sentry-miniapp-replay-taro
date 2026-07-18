@@ -23,16 +23,16 @@ Session Replay 的全部事件类型。在非微信平台或不同 Taro 版本�
 ## 安装
 
 ```sh
-npm install @xumoses/sentry-miniapp-replay-taro@beta
+pnpm add @xumoses/sentry-miniapp-replay-taro@beta
 ```
 
 宿主项目还需要安装 Taro、React、`@sentry/core`，以及以下两个 SDK namespace
 中的一个：
 
 ```sh
-npm install sentry-miniapp
+pnpm add sentry-miniapp
 # 或
-npm install @xumoses/sentry-miniapp@beta
+pnpm add @xumoses/sentry-miniapp@beta
 ```
 
 ## React 用法
@@ -95,7 +95,7 @@ transport、限流、离线队列和用户授权路径。适配层不会自行�
 发布包包含一个只供开发使用的内存查看器：
 
 ```sh
-npx sentry-miniapp-replay-taro-viewer
+pnpm dlx --package=@xumoses/sentry-miniapp-replay-taro@beta sentry-miniapp-replay-taro-viewer
 # 打开 http://127.0.0.1:4178
 ```
 
