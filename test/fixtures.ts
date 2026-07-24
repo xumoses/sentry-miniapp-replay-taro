@@ -1,5 +1,5 @@
 import { makeDsn } from '@sentry/core';
-import { type Mock, vi } from 'vitest';
+import { type Mock, vi } from 'vite-plus/test';
 
 import type {
   SentryMiniappReplaySdk,

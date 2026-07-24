@@ -1,0 +1,17 @@
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.2.6
+  vite-plus: 0.2.6
+overrides:
+  vite: 'catalog:'
+minimumReleaseAgeExclude:
+  - '@voidzero-dev/*'
+  - '@xumoses/sentry-miniapp@1.13.1-beta.1'
+  - vite-plus@0.2.6
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: '*'
