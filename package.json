@@ -1,6 +1,6 @@
 {
   "name": "@xumoses/sentry-miniapp-replay-taro",
-  "version": "0.1.0-beta.0",
+  "version": "0.1.0-beta.1",
   "description": "Experimental Taro virtual-DOM Session Replay adapter for sentry-miniapp",
   "license": "MIT",
   "repository": {
@@ -76,12 +76,12 @@
     }
   },
   "devDependencies": {
-    "@sentry/core": "^10.63.0",
+    "@sentry/core": "10.66.0",
     "@tarojs/runtime": "4.2.0",
     "@tarojs/taro": "4.2.0",
     "@types/node": "^20.19.11",
     "@types/react": "^18.3.12",
-    "@xumoses/sentry-miniapp": "1.13.1-beta.0",
+    "@xumoses/sentry-miniapp": "1.13.1-beta.1",
     "oxfmt": "^0.59.0",
     "oxlint": "^1.74.0",
     "react": "^18.3.1",

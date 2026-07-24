@@ -9,7 +9,7 @@ importers:
   .:
     devDependencies:
       '@sentry/core':
-        specifier: ^10.63.0
+        specifier: 10.66.0
         version: 10.66.0
       '@tarojs/runtime':
         specifier: 4.2.0
@@ -24,8 +24,8 @@ importers:
         specifier: ^18.3.12
         version: 18.3.31
       '@xumoses/sentry-miniapp':
-        specifier: 1.13.1-beta.0
-        version: 1.13.1-beta.0
+        specifier: 1.13.1-beta.1
+        version: 1.13.1-beta.1
       oxfmt:
         specifier: ^0.59.0
         version: 0.59.0
@@ -632,10 +632,6 @@ packages:
     resolution: {integrity: sha512-fO9PLmHdVURcSPUpWCItWAtgKiMwGdJHbovoSEyLplX5sxs2ugvI4CBPTrkkgqhObnZOD0CnWBKDzSVQYBKEyQ==}
     engines: {node: '>=14'}
 
-  '@sentry/core@10.63.0':
-    resolution: {integrity: sha512-OtUbsrnbEHffOF2S2+M5zXa3HIM0U2b4CDVLKMY1dgS0J3ivRF8XvkjvyIcEG/y8JXnwXbnprLyjhG+AqMdUZQ==}
-    engines: {node: '>=18'}
-
   '@sentry/core@10.66.0':
     resolution: {integrity: sha512-9UbgSvds7bMJsP561eWmeyMLcfOmnwxtnx2QuW3yLobzP2Ob7CyJCOzP4tGzlTAGDrzShkFEZhiyuBUKiEK2oQ==}
     engines: {node: '>=18'}
@@ -969,8 +965,8 @@ packages:
   '@vitest/utils@4.1.10':
     resolution: {integrity: sha512-fy9am/HWxbaGt/Sawrp90vt6Y6jQwf1RX77cz3uwoJwJVMli/e1IEwRPnMNJ7vKfPTwo0diXifkpPvwH9v7nGA==}
 
-  '@xumoses/sentry-miniapp@1.13.1-beta.0':
-    resolution: {integrity: sha512-xbHonO51jC2i/x641RviNI8jng9rmIleZPiKTIxVyH5T6kcWkYCXoPp4UxNbDa/f9uGLiCEVy2Uvjj3REHq+Nw==}
+  '@xumoses/sentry-miniapp@1.13.1-beta.1':
+    resolution: {integrity: sha512-oC1CRb6jWH6z5b2vsWjMyqUH9aHi4wb152p/pX7ogPFJ94ZLmS1mNkl8Vo5GFv/60df4l0FCsY7wur0K5TDTBQ==}
     engines: {node: '>=20'}
 
   ansi-escapes@4.3.2:
@@ -1954,8 +1950,6 @@ snapshots:
 
   '@sentry/conventions@0.16.0': {}
 
-  '@sentry/core@10.63.0': {}
-
   '@sentry/core@10.66.0':
     dependencies:
       '@sentry/conventions': 0.16.0
@@ -2228,9 +2222,9 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
-  '@xumoses/sentry-miniapp@1.13.1-beta.0':
+  '@xumoses/sentry-miniapp@1.13.1-beta.1':
     dependencies:
-      '@sentry/core': 10.63.0
+      '@sentry/core': 10.66.0
 
   ansi-escapes@4.3.2:
     dependencies:
