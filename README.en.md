@@ -1,5 +1,12 @@
 # @xumoses/sentry-miniapp-replay-taro
 
+Phase one now provides a process-wide `ReplayCoordinator`: stable session/error
+sampling, a bounded 30-second error buffer, promotion only from accepted Sentry
+exception events, `replay_id`/`error_ids` correlation, a runtime kill switch,
+and a bridge-only `useTaroReplayRoot` hook so Taro does not bundle another
+`@xumoses/sentry-miniapp`. See `docs/production-phase-one.md` for the public
+interface and invariants.
+
 An experimental Taro React Session Replay adapter for `sentry-miniapp`. It
 captures snapshots and mutations from Taro's virtual DOM and turns the capture
 into a Sentry Replay envelope.

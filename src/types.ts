@@ -1,4 +1,4 @@
-import type { Breadcrumb, DsnComponents, ReplayEnvelope } from '@sentry/core';
+import type { Breadcrumb, DsnComponents, Event, EventHint, ReplayEnvelope } from '@sentry/core';
 
 export interface TaroReplayEvent {
   type: number;
@@ -93,7 +93,10 @@ export interface StartTaroReplayRecorderOptions {
   maxDurationMs?: number;
   maxEvents?: number;
   maxBytes?: number;
+  rollingWindowMs?: number;
+  replayId?: string;
   metadata?: TaroReplayMetadata;
+  onEvent?: (event: TaroReplayEvent) => void;
   onStop?: (capture: TaroReplayCapture) => void;
 }
 
@@ -106,6 +109,10 @@ export interface SentryReplayClient {
   on?(
     hook: 'beforeAddBreadcrumb',
     callback: (breadcrumb: Breadcrumb) => void,
+  ): (() => void) | undefined;
+  on?(
+    hook: 'beforeSendEvent',
+    callback: (event: Event, hint?: EventHint) => void,
   ): (() => void) | undefined;
   sendEnvelope(envelope: ReplayEnvelope): PromiseLike<unknown>;
 }
@@ -165,6 +172,7 @@ export interface TaroReplayLimitOptions {
   maxDurationMs?: number;
   maxEvents?: number;
   maxBytes?: number;
+  rollingWindowMs?: number;
 }
 
 export interface CreateTaroReplayOptions {
@@ -177,9 +185,11 @@ export interface CreateTaroReplayOptions {
   sendOnDurationStop?: boolean;
   sendOnDispose?: boolean;
   frameworkVersion?: string;
+  replayId?: string;
   href?: (route: string) => string;
   getMetadata?: (context: TaroReplayContext) => TaroReplayMetadata | undefined;
   onCapture?: (capture: TaroReplayCapture) => void | Promise<void>;
+  onEvent?: (event: TaroReplayEvent) => void;
   onError?: (error: unknown) => void;
 }
 

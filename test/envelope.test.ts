@@ -4,12 +4,27 @@ import { describe, expect, test, vi } from 'vite-plus/test';
 import {
   createReplayEnvelope,
   sendReplayCapture,
+  serializeDsn,
   serializeReplayRecording,
   utf8ByteLength,
 } from '../src/envelope';
 import { makeCapture } from './fixtures';
 
 describe('Sentry Replay envelope', () => {
+  test('serializes DSN host/path/port without leaking the private password', () => {
+    expect(
+      serializeDsn({
+        protocol: 'https',
+        publicKey: 'public key',
+        pass: 'private-secret',
+        host: 'sentry.example.test',
+        port: '8443',
+        path: '/tenant/sentry/',
+        projectId: '42',
+      }),
+    ).toBe('https://public%20key@sentry.example.test:8443/tenant/sentry/42');
+  });
+
   test('serializes the segment header and rrweb events array in Sentry recording format', () => {
     const recording = serializeReplayRecording(makeCapture());
     const lines = recording.split('\n');

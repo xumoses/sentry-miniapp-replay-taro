@@ -191,8 +191,10 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         ...(windowInfo.windowHeight === undefined ? {} : { height: windowInfo.windowHeight }),
         maskAllText: options.privacy?.maskAllText !== false,
         maskInputValues: options.privacy?.maskInputValues !== false,
+        ...(options.replayId ? { replayId: options.replayId } : {}),
         ...options.limits,
         metadata,
+        ...(options.onEvent ? { onEvent: options.onEvent } : {}),
         onStop: (capture) => {
           void finalize(capture);
         },

@@ -9,6 +9,7 @@ import type {
   TaroReplayRecorderController,
   TaroReplayRuntime,
 } from '../src/types';
+import type { Breadcrumb, Event } from '@sentry/core';
 
 export function makeCapture(overrides: Partial<TaroReplayCapture> = {}): TaroReplayCapture {
   return {
@@ -59,6 +60,7 @@ export function makeSdk(): {
   sendEnvelope: Mock;
   addRecordedBreadcrumb: Mock;
   emitBreadcrumb(breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]): void;
+  emitBeforeSend(event: Event): void;
   getStartOptions(): StartTaroReplayRecorderOptions;
   getDetachCount(): number;
 } {
@@ -66,10 +68,28 @@ export function makeSdk(): {
   let breadcrumbHook:
     | ((breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]) => void)
     | undefined;
+  let beforeSendHook: ((event: Event) => void) | undefined;
   let detachCount = 0;
   let capture = makeCapture({ endedAt: null, stopReason: null, events: [] });
   const sendEnvelope = vi.fn(() => Promise.resolve({ statusCode: 200 }));
-  const addRecordedBreadcrumb = vi.fn(() => true);
+  const addRecordedBreadcrumb = vi.fn((breadcrumb: Breadcrumb) => {
+    const event = {
+      type: 5,
+      timestamp: capture.startedAt + capture.events.length,
+      data: { tag: 'breadcrumb', payload: breadcrumb },
+    };
+    capture = {
+      ...capture,
+      events: [...capture.events, event],
+      stats: {
+        ...capture.stats,
+        eventCount: capture.events.length + 1,
+        approximateBytes: capture.stats.approximateBytes + JSON.stringify(event).length,
+      },
+    };
+    startOptions?.onEvent?.(event);
+    return true;
+  });
   const controller: TaroReplayRecorderController = {
     addBreadcrumb: addRecordedBreadcrumb,
     getCapture: () => ({ ...capture, events: [...capture.events] }),
@@ -87,11 +107,13 @@ export function makeSdk(): {
     getClient: () => ({
       getDsn: () => makeDsn('https://public@example.test/1'),
       getOptions: () => ({ environment: 'staging', release: 'app@2.3.4' }),
-      on: (_hook, callback) => {
-        breadcrumbHook = callback;
+      on: (hook: 'beforeAddBreadcrumb' | 'beforeSendEvent', callback: any) => {
+        if (hook === 'beforeAddBreadcrumb') breadcrumbHook = callback;
+        else beforeSendHook = callback;
         return () => {
           detachCount++;
-          breadcrumbHook = undefined;
+          if (hook === 'beforeAddBreadcrumb') breadcrumbHook = undefined;
+          else beforeSendHook = undefined;
         };
       },
       sendEnvelope,
@@ -99,10 +121,18 @@ export function makeSdk(): {
     addBreadcrumb: (breadcrumb) => breadcrumbHook?.(breadcrumb),
     startTaroDomReplayPoc: (options) => {
       startOptions = options;
+      if (capture.stopReason) {
+        capture = makeCapture({ endedAt: null, stopReason: null, events: [] });
+      }
       capture = {
         ...capture,
+        ...(options.replayId ? { replayId: options.replayId } : {}),
         href: options.href || capture.href,
         ...(options.metadata ? { metadata: options.metadata } : {}),
+        events: [
+          { type: 4, timestamp: capture.startedAt, data: { href: options.href || '' } },
+          { type: 2, timestamp: capture.startedAt + 1, data: { node: {} } },
+        ],
       };
       return controller;
     },
@@ -113,6 +143,7 @@ export function makeSdk(): {
     sendEnvelope,
     addRecordedBreadcrumb,
     emitBreadcrumb: (breadcrumb) => breadcrumbHook?.(breadcrumb),
+    emitBeforeSend: (event) => beforeSendHook?.(event),
     getStartOptions: () => {
       if (!startOptions) throw new Error('Replay was not started');
       return startOptions;

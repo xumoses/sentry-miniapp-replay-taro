@@ -11,6 +11,7 @@ import type {
   UseTaroReplayOptions,
   UseTaroReplayResult,
 } from '../types';
+import type { ReplayCoordinatorSnapshot, TaroReplayBridge } from '../coordinator/types';
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -98,4 +99,39 @@ export function useTaroReplay(options: UseTaroReplayOptions): UseTaroReplayResul
   );
 }
 
+export interface UseTaroReplayRootOptions {
+  bridge?: TaroReplayBridge;
+}
+
+/**
+ * Attaches only the Taro virtual-DOM root to the process-wide native
+ * coordinator. It does not import or initialize a Sentry SDK.
+ */
+export function useTaroReplayRoot({ bridge }: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
+  const [snapshot, setSnapshot] = useState<ReplayCoordinatorSnapshot>(
+    () =>
+      bridge?.getSnapshot() || {
+        state: 'disabled',
+        eventCount: 0,
+        approximateBytes: 0,
+      },
+  );
+
+  useReady(() => {
+    bridge?.attachRoot(createRuntime());
+  });
+  useUnload(() => bridge?.detachRoot());
+  useEffect(() => {
+    if (!bridge) return;
+    const unsubscribe = bridge.subscribe(setSnapshot);
+    return () => {
+      unsubscribe();
+      bridge.detachRoot();
+    };
+  }, [bridge]);
+
+  return snapshot;
+}
+
 export type { UseTaroReplayOptions, UseTaroReplayResult } from '../types';
+export type { ReplayCoordinatorSnapshot, TaroReplayBridge } from '../coordinator/types';

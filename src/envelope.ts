@@ -1,4 +1,4 @@
-import { dsnToString, type ReplayEnvelope, type ReplayEvent, type SdkInfo } from '@sentry/core';
+import type { DsnComponents, ReplayEnvelope, ReplayEvent, SdkInfo } from '@sentry/core';
 
 import type { SentryReplayClient, TaroReplayCapture } from './types';
 
@@ -20,13 +20,27 @@ export function utf8ByteLength(value: string): number {
   return bytes;
 }
 
-export function serializeReplayRecording(capture: TaroReplayCapture): string {
-  return `${JSON.stringify({ segment_id: 0 })}\n${JSON.stringify(capture.events)}`;
+export function serializeReplayRecording(capture: TaroReplayCapture, segmentId = 0): string {
+  return `${JSON.stringify({ segment_id: segmentId })}\n${JSON.stringify(capture.events)}`;
+}
+
+export function serializeDsn(dsn: DsnComponents): string {
+  // Match @sentry/core dsnToString(dsn): private/password material is omitted by default.
+  const auth = dsn.publicKey ? `${encodeURIComponent(dsn.publicKey)}@` : '';
+  const path = dsn.path ? `/${dsn.path.replace(/^\/+|\/+$/g, '')}` : '';
+  const port = dsn.port ? `:${dsn.port}` : '';
+  return `${dsn.protocol}://${auth}${dsn.host}${port}${path}/${dsn.projectId}`;
 }
 
 export function createReplayEnvelope(
   capture: TaroReplayCapture,
-  options: { dsn?: string; sdk?: SdkInfo } = {},
+  options: {
+    dsn?: string;
+    sdk?: SdkInfo;
+    errorIds?: string[];
+    replayType?: 'session' | 'buffer';
+    segmentId?: number;
+  } = {},
 ): ReplayEnvelope {
   const endedAt = capture.endedAt ?? capture.startedAt;
   const metadata = capture.metadata || {};
@@ -39,11 +53,11 @@ export function createReplayEnvelope(
     start_timestamp: capture.startedAt / 1_000,
     replay_start_timestamp: capture.startedAt / 1_000,
     replay_id: capture.replayId,
-    segment_id: 0,
-    replay_type: 'session',
+    segment_id: options.segmentId || 0,
+    replay_type: options.replayType || 'session',
     platform: 'javascript',
     urls: [capture.href],
-    error_ids: [],
+    error_ids: options.errorIds || [],
     trace_ids: [],
     segment_names: [],
     ...(metadata.environment ? { environment: metadata.environment } : {}),
@@ -53,7 +67,7 @@ export function createReplayEnvelope(
     ...(metadata.tags ? { tags: metadata.tags } : {}),
     ...(metadata.contexts ? { contexts: metadata.contexts } : {}),
   };
-  const recording = serializeReplayRecording(capture);
+  const recording = serializeReplayRecording(capture, options.segmentId || 0);
 
   return [
     {
@@ -72,12 +86,18 @@ export function createReplayEnvelope(
 export async function sendReplayCapture(
   client: SentryReplayClient,
   capture: TaroReplayCapture,
+  options: {
+    errorIds?: string[];
+    replayType?: 'session' | 'buffer';
+    segmentId?: number;
+  } = {},
 ): Promise<void> {
   const dsnComponents = client.getDsn?.();
-  const dsn = dsnComponents ? dsnToString(dsnComponents) : undefined;
+  const dsn = dsnComponents ? serializeDsn(dsnComponents) : undefined;
   const envelope = createReplayEnvelope(capture, {
     ...(dsn ? { dsn } : {}),
     ...(capture.metadata?.sdk ? { sdk: capture.metadata.sdk } : {}),
+    ...options,
   });
   await Promise.resolve(client.sendEnvelope(envelope));
 }

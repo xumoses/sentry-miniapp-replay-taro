@@ -8,16 +8,19 @@
 
 [English](./README.en.md)
 
-## 当前验证范围
+## 生产化第一阶段
 
 - Taro `4.2.x`、React 18、微信小程序开发者工具；
-- 单个 Taro 页面根节点的初始快照、DOM mutation 和 Sentry breadcrumb；
-- 手动停止或达到时长上限后，通过当前 Sentry client 发送一个 Replay segment；
+- 全局 `ReplayCoordinator` 做一次稳定采样决定，并跨页面保持 replay id；
+- 普通完整会话采样和错误前 30 秒有界滚动 buffer；
+- 只有真正通过 SDK `beforeSend` 与错误采样的异常才会提升 buffer，自动写入
+  `replay_id` / `error_ids` 并只 finalize 一次；
+- Taro 页面只 attach/detach root，不导入第二份 sentry-miniapp；
 - 可注入社区版 `sentry-miniapp` 或内部重命名包 `@xumoses/sentry-miniapp` 的 SDK
   namespace。
 
 暂不支持原生小程序 DOM、Vue/uni-app、小游戏、Canvas、WebView、原生组件内部节点、
-多页面连续会话、多 segment、错误发生前缓冲、离线查看的完整 rrweb 播放体验，以及浏览器
+完整多 segment、离线查看的完整 rrweb 播放体验，以及浏览器
 Session Replay 的全部事件类型。在非微信平台或不同 Taro 版本上的行为也尚未经过系统验证。
 
 ## 安装
@@ -26,8 +29,7 @@ Session Replay 的全部事件类型。在非微信平台或不同 Taro 版本�
 pnpm add @xumoses/sentry-miniapp-replay-taro@beta
 ```
 
-宿主项目还需要安装 Taro、React、`@sentry/core`，以及以下两个 SDK namespace
-中的一个：
+原生入口需要安装以下两个 SDK namespace 中的一个。Taro 子项目不应再安装它：
 
 ```sh
 pnpm add sentry-miniapp
@@ -35,27 +37,37 @@ pnpm add sentry-miniapp
 pnpm add @xumoses/sentry-miniapp@beta
 ```
 
-## React 用法
+## 推荐用法
 
-先正常初始化 SDK，然后把整个 SDK namespace 注入 hook。适配层不硬编码宿主包名，
-因此同一份代码可用于社区包与内部重命名包。
+原生 `app.js` 是唯一初始化位置，并把最小 bridge 暴露给 Taro：
+
+```ts
+import * as Sentry from '@xumoses/sentry-miniapp';
+import { taroReplayIntegration } from '@xumoses/sentry-miniapp-replay-taro';
+
+const replay = taroReplayIntegration({ sdk: Sentry });
+
+Sentry.init({
+  sampleRate: 1,
+  replaysSessionSampleRate: 0.01,
+  replaysOnErrorSampleRate: 1,
+  integrations: [...Sentry.getDefaultIntegrations(), replay],
+});
+
+App({ globalData: { sentryBridge: { replay: replay.bridge } } });
+```
+
+Taro 页面只负责 root 生命周期：
 
 ```tsx
-import { Button, View } from '@tarojs/components';
-import * as Sentry from 'sentry-miniapp';
-import { useTaroReplay } from '@xumoses/sentry-miniapp-replay-taro/react';
+import Taro from '@tarojs/taro';
+import { useTaroReplayRoot } from '@xumoses/sentry-miniapp-replay-taro/react/root';
 
 export default function CheckoutPage() {
-  const replay = useTaroReplay({
-    sdk: Sentry,
-    limits: { maxDurationMs: 30_000 },
+  const state = useTaroReplayRoot({
+    bridge: Taro.getApp()?.globalData?.sentryBridge?.replay,
   });
-
-  return (
-    <View>
-      <Button onClick={() => void replay.stop('manual')}>停止并发送 Replay</Button>
-    </View>
-  );
+  return <View>Replay: {state.state}</View>;
 }
 ```
 
@@ -84,9 +96,9 @@ hook 会在 Taro `useReady` 时寻找当前页面的 `$taroPath` 根节点并开
 transport、限流、离线队列和用户授权路径。适配层不会自行解析 DSN，也不会从小程序
 直接对 Sentry 发起一条旁路 `fetch` 请求。
 
-默认只在手动停止和达到时长上限时发送。页面卸载用于停止与清理，默认不在卸载阶段启动
-异步网络请求。可通过 `sendOnManualStop`、`sendOnDurationStop` 和 `sendOnDispose`
-调整这些行为；在启用卸载发送前应先验证目标平台的生命周期约束。
+buffer 模式无异常时绝不发送；异常提升自动发送。手动 flush 只用于 full-session
+诊断。远程或本地 kill switch 可通过 integration 的 `enabled` boolean/函数接入，
+disabled 状态不会创建 observer 或发送 envelope。
 
 ## 本地 capture 查看器
 

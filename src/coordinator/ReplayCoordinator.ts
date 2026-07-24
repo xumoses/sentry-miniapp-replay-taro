@@ -1,0 +1,294 @@
+import { createTaroReplay } from '../createTaroReplay';
+import { sendReplayCapture, utf8ByteLength } from '../envelope';
+import type { TaroReplayCapture, TaroReplayHandle, TaroReplayRuntime } from '../types';
+import { boundReplayEvents } from './buffer';
+import type {
+  ReplayAwareEvent,
+  ReplayCoordinatorOptions,
+  ReplayCoordinatorSnapshot,
+  ReplayCoordinatorState,
+  TaroReplayBridge,
+} from './types';
+
+const DEFAULT_LIMITS = {
+  maxDurationMs: 5 * 60_000,
+  maxEvents: 500,
+  maxBytes: 512 * 1024,
+  rollingWindowMs: 30_000,
+};
+
+function clampRate(value: number | undefined): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(1, value || 0));
+}
+
+function sampled(rate: number, random: () => number): boolean {
+  return rate > 0 && (rate >= 1 || random() < rate);
+}
+
+function replayId(random: () => number): string {
+  let value = '';
+  for (let index = 0; index < 32; index++) value += Math.floor(random() * 16).toString(16);
+  return value;
+}
+
+function isErrorEvent(event: ReplayAwareEvent): boolean {
+  return Boolean(event.exception?.values?.length);
+}
+
+function errorValue(cause: unknown): Error {
+  return cause instanceof Error ? cause : new Error(String(cause));
+}
+
+export class ReplayCoordinator implements TaroReplayBridge {
+  readonly #options: ReplayCoordinatorOptions;
+  readonly #listeners = new Set<(snapshot: ReplayCoordinatorSnapshot) => void>();
+  readonly #replayId?: string;
+  #state: ReplayCoordinatorState;
+  #handle: TaroReplayHandle | undefined;
+  #captures: TaroReplayCapture[] = [];
+  #finalization?: Promise<void>;
+  #errorEventId: string | undefined;
+  #sentReplayId: string | undefined;
+  #error: Error | undefined;
+  #detachErrorHook: (() => void) | undefined;
+  #segmentId = 0;
+
+  constructor(options: ReplayCoordinatorOptions) {
+    this.#options = options;
+    const enabled =
+      typeof options.enabled === 'function' ? options.enabled() : options.enabled !== false;
+    const random = options.random || Math.random;
+    if (!enabled) {
+      this.#state = 'disabled';
+      return;
+    }
+    if (sampled(clampRate(options.replaysSessionSampleRate), random)) {
+      this.#state = 'session';
+    } else if (sampled(clampRate(options.replaysOnErrorSampleRate), random)) {
+      this.#state = 'buffer';
+    } else {
+      this.#state = 'disabled';
+      return;
+    }
+    this.#replayId = replayId(random);
+    this.#detachErrorHook = options.client.on?.('beforeSendEvent', (event) => {
+      this.#beforeSendEvent(event);
+    });
+  }
+
+  attachRoot(runtime: TaroReplayRuntime): boolean {
+    if (!this.refreshEnabled()) return false;
+    if (this.#state === 'disabled' || this.#state === 'sent' || this.#state === 'error') {
+      return false;
+    }
+    this.detachRoot();
+    this.#handle = createTaroReplay({
+      sdk: this.#options.sdk,
+      runtime,
+      ...(this.#replayId ? { replayId: this.#replayId } : {}),
+      ...(this.#options.privacy ? { privacy: this.#options.privacy } : {}),
+      ...(this.#state === 'buffer'
+        ? { limits: { ...DEFAULT_LIMITS, ...this.#options.limits } }
+        : this.#options.limits
+          ? { limits: this.#options.limits }
+          : {}),
+      sendOnManualStop: false,
+      sendOnDurationStop: false,
+      sendOnDispose: false,
+      onCapture: (capture) => this.#onCapture(capture),
+      onEvent: () => this.#notify(),
+      onError: (cause) => this.#fail(cause),
+    });
+    const attached = this.#handle.start();
+    this.#notify();
+    return attached;
+  }
+
+  detachRoot(): void {
+    const handle = this.#handle;
+    if (!handle) return;
+    this.#handle = undefined;
+    const capture = handle.getController()?.getCapture();
+    if (this.#state === 'session') {
+      void handle
+        .stop('root-detach')
+        .then((stopped) => (stopped ? this.#sendSessionCapture(stopped, false) : undefined))
+        .catch((cause) => this.#fail(cause));
+    } else {
+      handle.dispose();
+      if (capture) this.#storeBufferedCapture(capture);
+    }
+    this.#notify();
+  }
+
+  async flush(): Promise<void> {
+    if (!this.refreshEnabled()) return;
+    if (this.#state !== 'session') return;
+    const capture = await this.#stopCurrent('manual');
+    if (!capture) return;
+    try {
+      await this.#sendSessionCapture(capture, true);
+    } catch (cause) {
+      this.#fail(cause);
+      throw cause;
+    }
+  }
+
+  getSnapshot(): ReplayCoordinatorSnapshot {
+    const captures = [...this.#captures];
+    const current = this.#handle?.getController()?.getCapture();
+    if (current) captures.push(current);
+    return {
+      state: this.#state,
+      ...(this.#replayId ? { replayId: this.#replayId } : {}),
+      ...(this.#errorEventId ? { errorEventId: this.#errorEventId } : {}),
+      ...(this.#sentReplayId ? { sentReplayId: this.#sentReplayId } : {}),
+      eventCount: captures.reduce((total, capture) => total + capture.events.length, 0),
+      approximateBytes: captures.reduce(
+        (total, capture) => total + capture.stats.approximateBytes,
+        0,
+      ),
+      ...(this.#error ? { error: this.#error } : {}),
+    };
+  }
+
+  subscribe(listener: (snapshot: ReplayCoordinatorSnapshot) => void): () => void {
+    this.#listeners.add(listener);
+    listener(this.getSnapshot());
+    return () => this.#listeners.delete(listener);
+  }
+
+  refreshEnabled(): boolean {
+    const enabled =
+      typeof this.#options.enabled === 'function'
+        ? this.#options.enabled()
+        : this.#options.enabled !== false;
+    if (enabled) return this.#state !== 'disabled';
+    this.#handle?.dispose();
+    this.#handle = undefined;
+    this.#captures = [];
+    this.#detachErrorHook?.();
+    this.#detachErrorHook = undefined;
+    this.#state = 'disabled';
+    this.#notify();
+    return false;
+  }
+
+  #beforeSendEvent(event: ReplayAwareEvent): void {
+    if (!this.refreshEnabled()) return;
+    if (
+      this.#state !== 'buffer' ||
+      this.#finalization ||
+      (!this.#handle && this.#captures.length === 0) ||
+      !isErrorEvent(event) ||
+      !event.event_id
+    ) {
+      return;
+    }
+    this.#errorEventId = event.event_id;
+    event.contexts = {
+      ...event.contexts,
+      replay: {
+        ...event.contexts?.replay,
+        replay_id: this.#replayId,
+      },
+    };
+    this.#state = 'promoted';
+    this.#notify();
+    this.#finalization = this.#promote(event.event_id);
+    void this.#finalization.catch((cause) => this.#fail(cause));
+  }
+
+  async #promote(errorEventId: string): Promise<void> {
+    const current = await this.#stopCurrent('error');
+    if (current) this.#storeBufferedCapture(current);
+    const capture = this.#mergeBufferedCaptures();
+    if (!capture) return;
+    if (!this.refreshEnabled()) return;
+    await sendReplayCapture(this.#options.client, capture, {
+      errorIds: [errorEventId],
+      replayType: 'buffer',
+    });
+    if (this.#replayId) this.#sentReplayId = this.#replayId;
+    this.#state = 'sent';
+    this.#detachErrorHook?.();
+    this.#detachErrorHook = undefined;
+    this.#notify();
+  }
+
+  async #stopCurrent(reason: string): Promise<TaroReplayCapture | undefined> {
+    const handle = this.#handle;
+    if (!handle) return undefined;
+    this.#handle = undefined;
+    return handle.stop(reason);
+  }
+
+  #mergeBufferedCaptures(): TaroReplayCapture | undefined {
+    const captures = this.#captures;
+    if (!captures.length) return undefined;
+    const last = captures[captures.length - 1]!;
+    const limits = { ...DEFAULT_LIMITS, ...this.#options.limits };
+    const events = captures.flatMap((capture) => capture.events);
+    const bounded = boundReplayEvents(events, {
+      now: (this.#options.now || Date.now)(),
+      windowMs: limits.rollingWindowMs,
+      maxEvents: limits.maxEvents,
+      maxBytes: limits.maxBytes,
+    });
+    const approximateBytes = bounded.reduce(
+      (sum, event) => sum + utf8ByteLength(JSON.stringify(event)),
+      0,
+    );
+    return {
+      ...last,
+      replayId: this.#replayId || last.replayId,
+      startedAt: bounded[0]?.timestamp || last.startedAt,
+      endedAt: last.endedAt || (this.#options.now || Date.now)(),
+      stopReason: 'error',
+      events: bounded,
+      stats: { ...last.stats, eventCount: bounded.length, approximateBytes },
+    };
+  }
+
+  #storeBufferedCapture(capture: TaroReplayCapture): void {
+    this.#captures.push(capture);
+    const bounded = this.#mergeBufferedCaptures();
+    this.#captures = bounded ? [bounded] : [];
+  }
+
+  #fail(cause: unknown): void {
+    this.#error = errorValue(cause);
+    this.#state = 'error';
+    this.#detachErrorHook?.();
+    this.#detachErrorHook = undefined;
+    this.#notify();
+  }
+
+  async #onCapture(capture: TaroReplayCapture): Promise<void> {
+    if (
+      this.#state !== 'session' ||
+      (capture.stopReason !== 'duration' && capture.stopReason !== 'limit')
+    ) {
+      return;
+    }
+    await this.#sendSessionCapture(capture, true);
+  }
+
+  async #sendSessionCapture(capture: TaroReplayCapture, terminal: boolean): Promise<void> {
+    if (!this.refreshEnabled()) return;
+    const segmentId = this.#segmentId++;
+    await sendReplayCapture(this.#options.client, capture, {
+      replayType: 'session',
+      segmentId,
+    });
+    if (this.#replayId) this.#sentReplayId = this.#replayId;
+    if (terminal) this.#state = 'sent';
+    this.#notify();
+  }
+
+  #notify(): void {
+    const snapshot = this.getSnapshot();
+    for (const listener of this.#listeners) listener(snapshot);
+  }
+}

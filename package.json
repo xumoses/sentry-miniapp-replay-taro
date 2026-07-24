@@ -23,6 +23,11 @@
       "import": "./dist/react.mjs",
       "require": "./dist/react.cjs.js"
     },
+    "./react/root": {
+      "types": "./dist/react/root.d.ts",
+      "import": "./dist/react-root.mjs",
+      "require": "./dist/react-root.cjs.js"
+    },
     "./devtools/server": "./devtools/server.cjs"
   },
   "bin": {
@@ -56,7 +61,6 @@
   },
   "packageManager": "pnpm@11.17.0",
   "peerDependencies": {
-    "@sentry/core": "^10.63.0",
     "@tarojs/runtime": "^4.2.0",
     "@tarojs/taro": "^4.2.0",
     "react": ">=18"
