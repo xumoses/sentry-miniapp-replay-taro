@@ -33,8 +33,8 @@ importers:
         specifier: ^18.3.12
         version: 18.3.31
       '@xumoses/sentry-miniapp':
-        specifier: 1.13.1-beta.1
-        version: 1.13.1-beta.1
+        specifier: 1.13.1-beta.2
+        version: 1.13.1-beta.2
       react:
         specifier: ^18.3.1
         version: 18.3.1
@@ -1032,8 +1032,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@xumoses/sentry-miniapp@1.13.1-beta.1':
-    resolution: {integrity: sha512-oC1CRb6jWH6z5b2vsWjMyqUH9aHi4wb152p/pX7ogPFJ94ZLmS1mNkl8Vo5GFv/60df4l0FCsY7wur0K5TDTBQ==}
+  '@xumoses/sentry-miniapp@1.13.1-beta.2':
+    resolution: {integrity: sha512-5Nj/p/qljmHYrWZSTlMA1oLCZGF9PHZN644XTjP/P0DUSzPMxt4DvObZxch7fMaSyDLbxi7Tic3jaUwtQDE55g==}
     engines: {node: '>=20'}
 
   '@yuku-codegen/binding-darwin-arm64@0.5.48':
@@ -2478,7 +2478,7 @@ snapshots:
   '@voidzero-dev/vite-plus-win32-x64-msvc@0.2.6':
     optional: true
 
-  '@xumoses/sentry-miniapp@1.13.1-beta.1':
+  '@xumoses/sentry-miniapp@1.13.1-beta.2':
     dependencies:
       '@sentry/core': 10.66.0
 
