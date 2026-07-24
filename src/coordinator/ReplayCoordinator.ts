@@ -97,7 +97,6 @@ export class ReplayCoordinator implements TaroReplayBridge {
       sendOnDurationStop: false,
       sendOnDispose: false,
       onCapture: (capture) => this.#onCapture(capture),
-      onEvent: () => this.#notify(),
       onError: (cause) => this.#fail(cause),
     });
     const attached = this.#handle.start();

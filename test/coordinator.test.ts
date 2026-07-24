@@ -172,7 +172,7 @@ describe('ReplayCoordinator', () => {
     expect(fixture.sendEnvelope).not.toHaveBeenCalled();
   });
 
-  test('notifies live event and byte counters while a root is recording', () => {
+  test('does not notify React subscribers for each recorded event', () => {
     const fixture = makeSdk();
     const coordinator = new ReplayCoordinator({
       sdk: fixture.sdk,
@@ -183,9 +183,11 @@ describe('ReplayCoordinator', () => {
     const snapshots: Array<{ eventCount: number; approximateBytes: number }> = [];
     coordinator.subscribe((snapshot) => snapshots.push(snapshot));
     coordinator.attachRoot(makeRuntime());
+    const notificationsAfterAttach = snapshots.length;
     fixture.emitBreadcrumb({ category: 'ui', message: 'mutation' });
 
-    expect(snapshots.at(-1)).toMatchObject({
+    expect(snapshots).toHaveLength(notificationsAfterAttach);
+    expect(coordinator.getSnapshot()).toMatchObject({
       eventCount: 4,
       approximateBytes: expect.any(Number),
     });
