@@ -1,3 +1,4 @@
+import { makeDsn } from '@sentry/core';
 import { type Mock, vi } from 'vitest';
 
 import type {
@@ -84,7 +85,7 @@ export function makeSdk(): {
     SDK_NAME: 'sentry.javascript.miniapp',
     SDK_VERSION: '1.13.1',
     getClient: () => ({
-      getDsn: () => ({ toString: () => 'https://public@example.test/1' }),
+      getDsn: () => makeDsn('https://public@example.test/1'),
       getOptions: () => ({ environment: 'staging', release: 'app@2.3.4' }),
       on: (_hook, callback) => {
         breadcrumbHook = callback;

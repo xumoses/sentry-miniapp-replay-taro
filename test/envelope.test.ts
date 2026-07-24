@@ -1,4 +1,4 @@
-import type { ReplayEnvelope } from '@sentry/core';
+import { makeDsn, type ReplayEnvelope } from '@sentry/core';
 import { describe, expect, test, vi } from 'vitest';
 
 import {
@@ -54,13 +54,16 @@ describe('Sentry Replay envelope', () => {
     const sendEnvelope = vi.fn((envelope: ReplayEnvelope) => Promise.resolve(envelope));
     await sendReplayCapture(
       {
-        getDsn: () => ({ toString: () => 'https://public@example.test/1' }),
+        getDsn: () => makeDsn('https://public@example.test/1'),
         sendEnvelope,
       },
       makeCapture(),
     );
 
     expect(sendEnvelope).toHaveBeenCalledTimes(1);
+    expect(sendEnvelope.mock.calls[0]![0][0]).toMatchObject({
+      dsn: 'https://public@example.test/1',
+    });
     expect(sendEnvelope.mock.calls[0]![0][1][0][0]).toEqual({ type: 'replay_event' });
   });
 });

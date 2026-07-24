@@ -1,4 +1,4 @@
-import type { ReplayEnvelope, ReplayEvent, SdkInfo } from '@sentry/core';
+import { dsnToString, type ReplayEnvelope, type ReplayEvent, type SdkInfo } from '@sentry/core';
 
 import type { SentryReplayClient, TaroReplayCapture } from './types';
 
@@ -73,7 +73,8 @@ export async function sendReplayCapture(
   client: SentryReplayClient,
   capture: TaroReplayCapture,
 ): Promise<void> {
-  const dsn = client.getDsn?.()?.toString();
+  const dsnComponents = client.getDsn?.();
+  const dsn = dsnComponents ? dsnToString(dsnComponents) : undefined;
   const envelope = createReplayEnvelope(capture, {
     ...(dsn ? { dsn } : {}),
     ...(capture.metadata?.sdk ? { sdk: capture.metadata.sdk } : {}),

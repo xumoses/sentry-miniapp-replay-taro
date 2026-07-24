@@ -1,4 +1,4 @@
-import type { Breadcrumb, ReplayEnvelope } from '@sentry/core';
+import type { Breadcrumb, DsnComponents, ReplayEnvelope } from '@sentry/core';
 
 export interface TaroReplayEvent {
   type: number;
@@ -98,7 +98,7 @@ export interface StartTaroReplayRecorderOptions {
 }
 
 export interface SentryReplayClient {
-  getDsn?(): { toString(): string } | undefined;
+  getDsn?(): DsnComponents | undefined;
   getOptions?(): {
     environment?: string | undefined;
     release?: string | undefined;
