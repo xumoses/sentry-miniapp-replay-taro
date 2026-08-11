@@ -1,5 +1,5 @@
 import { document, MutationObserver } from '@tarojs/runtime';
-import Taro, { useReady, useUnload } from '@tarojs/taro';
+import Taro, { useDidHide, useDidShow, useReady, useUnload } from '@tarojs/taro';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createTaroReplay } from '../createTaroReplay';
@@ -107,7 +107,9 @@ export interface UseTaroReplayRootOptions {
  * Attaches only the Taro virtual-DOM root to the process-wide native
  * coordinator. It does not import or initialize a Sentry SDK.
  */
-export function useTaroReplayRoot({ bridge }: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
+export function useTaroReplaySnapshot({
+  bridge,
+}: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
   const [snapshot, setSnapshot] = useState<ReplayCoordinatorSnapshot>(
     () =>
       bridge?.getSnapshot() || {
@@ -117,19 +119,21 @@ export function useTaroReplayRoot({ bridge }: UseTaroReplayRootOptions): ReplayC
       },
   );
 
-  useReady(() => {
-    bridge?.attachRoot(createRuntime());
-  });
-  useUnload(() => bridge?.detachRoot());
   useEffect(() => {
     if (!bridge) return;
-    const unsubscribe = bridge.subscribe(setSnapshot);
-    return () => {
-      unsubscribe();
-      bridge.detachRoot();
-    };
+    return bridge.subscribe(setSnapshot);
   }, [bridge]);
+  return snapshot;
+}
 
+export function useTaroReplayRoot(options: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
+  const { bridge } = options;
+  const snapshot = useTaroReplaySnapshot(options);
+  useReady(() => bridge?.attachRoot(createRuntime()));
+  useDidShow(() => bridge?.attachRoot(createRuntime()));
+  useDidHide(() => bridge?.detachRoot());
+  useUnload(() => bridge?.detachRoot());
+  useEffect(() => () => bridge?.detachRoot(), [bridge]);
   return snapshot;
 }
 

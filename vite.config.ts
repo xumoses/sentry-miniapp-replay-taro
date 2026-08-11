@@ -152,6 +152,7 @@ export default defineConfig({
         index: resolve(__dirname, 'src/index.ts'),
         react: resolve(__dirname, 'src/react/index.ts'),
         'react-root': resolve(__dirname, 'src/react/root.ts'),
+        'taro-lifecycle': resolve(__dirname, 'src/taro/lifecycle.ts'),
       },
       formats: ['es', 'cjs'],
       // miniprogram-ci 1.x appends `.js` to bare `.cjs` entries. Publishing

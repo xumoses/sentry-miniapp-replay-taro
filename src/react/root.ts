@@ -1,5 +1,5 @@
 import { document, MutationObserver } from '@tarojs/runtime';
-import Taro, { useReady, useUnload } from '@tarojs/taro';
+import Taro, { useDidHide, useDidShow, useReady, useUnload } from '@tarojs/taro';
 import { useEffect, useState } from 'react';
 
 import type { ReplayCoordinatorSnapshot, TaroReplayBridge } from '../coordinator/types';
@@ -29,8 +29,10 @@ export interface UseTaroReplayRootOptions {
   bridge?: TaroReplayBridge;
 }
 
-/** Attaches only the mounted Taro root to the native process-wide coordinator. */
-export function useTaroReplayRoot({ bridge }: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
+/** Subscribes to coordinator state without owning a page root lifecycle. */
+export function useTaroReplaySnapshot({
+  bridge,
+}: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
   const [snapshot, setSnapshot] = useState<ReplayCoordinatorSnapshot>(
     () =>
       bridge?.getSnapshot() || {
@@ -39,16 +41,22 @@ export function useTaroReplayRoot({ bridge }: UseTaroReplayRootOptions): ReplayC
         approximateBytes: 0,
       },
   );
-  useReady(() => bridge?.attachRoot(createRuntime()));
-  useUnload(() => bridge?.detachRoot());
   useEffect(() => {
     if (!bridge) return;
-    const unsubscribe = bridge.subscribe(setSnapshot);
-    return () => {
-      unsubscribe();
-      bridge.detachRoot();
-    };
+    return bridge.subscribe(setSnapshot);
   }, [bridge]);
+  return snapshot;
+}
+
+/** Attaches only the visible Taro root to the native process-wide coordinator. */
+export function useTaroReplayRoot(options: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
+  const { bridge } = options;
+  const snapshot = useTaroReplaySnapshot(options);
+  useReady(() => bridge?.attachRoot(createRuntime()));
+  useDidShow(() => bridge?.attachRoot(createRuntime()));
+  useDidHide(() => bridge?.detachRoot());
+  useUnload(() => bridge?.detachRoot());
+  useEffect(() => () => bridge?.detachRoot(), [bridge]);
   return snapshot;
 }
 

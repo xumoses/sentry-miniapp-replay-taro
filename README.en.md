@@ -72,9 +72,16 @@ export default function CheckoutPage() {
 }
 ```
 
-The hook starts after Taro's `useReady` by resolving the current `$taroPath`
-page root. It disposes observers during `useUnload`. A missing page root is a
-safe no-op and does not prevent the page from running.
+For app-wide coverage, install the lifecycle adapter once from
+`@xumoses/sentry-miniapp-replay-taro/taro/lifecycle`. It attaches every Taro
+page on ready/show and detaches on hide/unload, so native pages and background
+time are not recorded. Lifecycle failures are swallowed and never alter page
+navigation.
+
+The page hook starts after Taro's `useReady`, resumes on `useDidShow`, and
+records only the current `$taroPath` root. It disposes observers during
+`useDidHide` and `useUnload`. A missing page root is a safe no-op and does not
+prevent the page from running.
 
 For a non-React integration, import `createTaroReplay` from the main entry point
 and provide an explicit Taro runtime adapter. The main entry does not statically

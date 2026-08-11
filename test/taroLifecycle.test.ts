@@ -1,0 +1,113 @@
+import { beforeEach, describe, expect, test, vi } from 'vite-plus/test';
+
+const { tap, getCurrentInstance, nextTicks } = vi.hoisted(() => ({
+  tap: vi.fn(),
+  getCurrentInstance: vi.fn(() => ({ router: { $taroPath: 'pages/stale/index' } })),
+  nextTicks: [] as Array<() => void>,
+}));
+
+vi.mock('@tarojs/runtime', () => ({
+  document: { getElementById: vi.fn() },
+  hooks: { tap },
+  MutationObserver: class {},
+}));
+
+vi.mock('@tarojs/taro', () => ({
+  default: {
+    getCurrentInstance,
+    nextTick: (callback: () => void) => nextTicks.push(callback),
+    getWindowInfo: () => ({ windowWidth: 390, windowHeight: 844 }),
+    getEnv: () => 'WEAPP',
+    getAccountInfoSync: () => ({ miniProgram: { envVersion: 'develop' } }),
+    getAppBaseInfo: () => ({ SDKVersion: '3.6.2' }),
+  },
+}));
+
+import { installTaroReplayPageLifecycle } from '../src/taro/lifecycle';
+import type { TaroReplayRuntime } from '../src/types';
+
+describe('installTaroReplayPageLifecycle', () => {
+  beforeEach(() => {
+    tap.mockReset();
+    nextTicks.length = 0;
+  });
+
+  test('attaches a visible Taro page once and detaches it once', () => {
+    const bridge = {
+      attachRoot: vi.fn((_runtime: TaroReplayRuntime) => true),
+      detachRoot: vi.fn(),
+      flush: vi.fn(() => Promise.resolve()),
+      refreshEnabled: vi.fn(() => true),
+      getSnapshot: vi.fn(() => ({ state: 'buffer' as const, eventCount: 0, approximateBytes: 0 })),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    const callbacks = {
+      onReady: vi.fn(),
+      onShow: vi.fn(),
+      onHide: vi.fn(),
+      onUnload: vi.fn(),
+    };
+    const page = { ...callbacks };
+
+    installTaroReplayPageLifecycle({ bridge });
+    expect(tap).toHaveBeenCalledWith('modifyPageObject', expect.any(Function));
+    const instrument = tap.mock.calls[0]![1] as (config: typeof page) => void;
+    instrument(page);
+
+    const pageInstance = {
+      $taroPath: 'pages/demo/index?$taroTimestamp=123',
+      route: 'pages/demo/index',
+    };
+    page.onShow.call(pageInstance);
+    expect(bridge.attachRoot).not.toHaveBeenCalled();
+    page.onReady.call(pageInstance);
+    expect(bridge.attachRoot).not.toHaveBeenCalled();
+    nextTicks.shift()?.();
+    expect(bridge.attachRoot).toHaveBeenCalledTimes(1);
+    const runtime = bridge.attachRoot.mock.calls[0]![0];
+    expect(runtime.getCurrentInstance()).toEqual({
+      router: {
+        $taroPath: 'pages/demo/index?$taroTimestamp=123',
+        path: 'pages/demo/index',
+      },
+    });
+    expect(getCurrentInstance).not.toHaveBeenCalled();
+    expect(callbacks.onReady).toHaveBeenCalledTimes(1);
+    expect(callbacks.onShow).toHaveBeenCalledTimes(1);
+
+    page.onHide.call(pageInstance);
+    page.onUnload.call(pageInstance);
+    expect(bridge.detachRoot).toHaveBeenCalledTimes(1);
+    expect(callbacks.onHide).toHaveBeenCalledTimes(1);
+    expect(callbacks.onUnload).toHaveBeenCalledTimes(1);
+  });
+
+  test('swallows replay lifecycle failures without changing page lifecycle results', () => {
+    const expected = { ok: true };
+    const bridge = {
+      attachRoot: vi.fn(() => {
+        throw new Error('attach failed');
+      }),
+      detachRoot: vi.fn(() => {
+        throw new Error('detach failed');
+      }),
+      flush: vi.fn(() => Promise.resolve()),
+      refreshEnabled: vi.fn(() => true),
+      getSnapshot: vi.fn(() => ({ state: 'buffer' as const, eventCount: 0, approximateBytes: 0 })),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    const page = {
+      onReady: vi.fn(() => expected),
+      onHide: vi.fn(() => expected),
+    };
+
+    installTaroReplayPageLifecycle({ bridge });
+    const instrument = tap.mock.calls[0]![1] as (config: typeof page) => void;
+    instrument(page);
+
+    const pageInstance = {};
+    expect(page.onReady.call(pageInstance)).toBe(expected);
+    expect(() => nextTicks.shift()?.()).not.toThrow();
+    expect(page.onHide.call(pageInstance)).toBe(expected);
+  });
+});

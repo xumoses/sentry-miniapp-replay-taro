@@ -13,14 +13,16 @@
 - Taro `4.2.x`、React 18、微信小程序开发者工具；
 - 全局 `ReplayCoordinator` 做一次稳定采样决定，并跨页面保持 replay id；
 - 普通完整会话采样和错误前 30 秒有界滚动 buffer；
-- 只有真正通过 SDK `beforeSend` 与错误采样的异常才会提升 buffer，自动写入
-  `replay_id` / `error_ids` 并只 finalize 一次；
+- 只有当前可见 Taro 页面中真正通过 SDK `beforeSend` 与错误采样的异常才会提升
+  buffer；原生页和后台异常不会误关联此前的 Taro buffer；
+- 首个错误沿用同一 `replay_id` 提升为 session，后续错误与递增 segment 继续归入
+  同一个 Replay，达到会话上限后重新进入 error buffer；
 - Taro 页面只 attach/detach root，不导入第二份 sentry-miniapp；
 - 可注入社区版 `sentry-miniapp` 或内部重命名包 `@xumoses/sentry-miniapp` 的 SDK
   namespace。
 
 暂不支持原生小程序 DOM、Vue/uni-app、小游戏、Canvas、WebView、原生组件内部节点、
-完整多 segment、离线查看的完整 rrweb 播放体验，以及浏览器
+离线查看的完整 rrweb 播放体验，以及浏览器
 Session Replay 的全部事件类型。在非微信平台或不同 Taro 版本上的行为也尚未经过系统验证。
 
 ## 安装
@@ -57,7 +59,22 @@ Sentry.init({
 App({ globalData: { sentryBridge: { replay: replay.bridge } } });
 ```
 
-Taro 页面只负责 root 生命周期：
+推荐在 Taro app 入口一次安装全页面生命周期：
+
+```ts
+import Taro from '@tarojs/taro';
+import { installTaroReplayPageLifecycle } from '@xumoses/sentry-miniapp-replay-taro/taro/lifecycle';
+
+installTaroReplayPageLifecycle({
+  bridge: Taro.getApp()?.globalData?.sentryBridge?.replay,
+});
+```
+
+安装器在页面 ready/show 时 attach，在 hide/unload 时 detach。进入原生页或小程序后台
+不会继续录制，返回 Taro 后沿用当前 Replay；任何生命周期异常都会安全降级，不改变页面
+原始返回值或导航结果。
+
+单页调试也可以使用 hook：
 
 ```tsx
 import Taro from '@tarojs/taro';
@@ -71,8 +88,9 @@ export default function CheckoutPage() {
 }
 ```
 
-hook 会在 Taro `useReady` 时寻找当前页面的 `$taroPath` 根节点并开始录制，在
-`useUnload` 时释放监听。找不到页面根节点时会安全地跳过，不会阻止页面运行。
+hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 根节点并开始
+录制，在 `useDidHide` / `useUnload` 时释放监听。找不到页面根节点时会安全地跳过，
+不会阻止页面运行。
 
 如果不使用 React，可以从主入口导入 `createTaroReplay`，并显式提供 Taro runtime
 适配对象。该入口不会静态依赖 `@tarojs/taro` 或 `@tarojs/runtime`。

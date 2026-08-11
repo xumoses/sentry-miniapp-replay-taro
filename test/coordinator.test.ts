@@ -2,7 +2,7 @@ import type { Event } from '@sentry/core';
 import { describe, expect, test, vi } from 'vite-plus/test';
 
 import { ReplayCoordinator } from '../src/coordinator/ReplayCoordinator';
-import { makeRuntime, makeSdk } from './fixtures';
+import { makeCapture, makeRuntime, makeSdk } from './fixtures';
 
 describe('ReplayCoordinator', () => {
   test('uses strict sampling boundaries', () => {
@@ -97,7 +97,7 @@ describe('ReplayCoordinator', () => {
     });
   });
 
-  test('accepted exception promotes once and correlates both envelopes', async () => {
+  test('accepted exceptions share one replay and continue in ordered segments', async () => {
     const fixture = makeSdk();
     const coordinator = new ReplayCoordinator({
       sdk: fixture.sdk,
@@ -117,24 +117,72 @@ describe('ReplayCoordinator', () => {
     };
 
     fixture.emitBeforeSend(first);
-    fixture.emitBeforeSend(second);
-    await vi.waitFor(() => expect(coordinator.getSnapshot().state).toBe('sent'));
+    await vi.waitFor(() => expect(coordinator.getSnapshot().state).toBe('session'));
+    expect(fixture.getStartOptions()).toMatchObject({
+      maxDurationMs: 5 * 60_000,
+      maxEvents: 500,
+      maxBytes: 512 * 1024,
+    });
+    expect(fixture.getStartOptions().rollingWindowMs).toBeUndefined();
 
     expect(first.contexts?.replay).toEqual({
       replay_id: coordinator.getSnapshot().replayId,
     });
-    expect(second.contexts?.replay).toBeUndefined();
     expect(fixture.sendEnvelope).toHaveBeenCalledTimes(1);
-    const envelope = fixture.sendEnvelope.mock.calls[0]![0] as any;
-    expect(envelope[1][0][1]).toMatchObject({
+    const firstEnvelope = fixture.sendEnvelope.mock.calls[0]![0] as any;
+    expect(firstEnvelope[1][0][1]).toMatchObject({
       replay_id: coordinator.getSnapshot().replayId,
+      segment_id: 0,
       replay_type: 'buffer',
       error_ids: ['e'.repeat(32)],
     });
+
+    fixture.emitBeforeSend(second);
+    expect(second.contexts?.replay).toEqual({
+      replay_id: coordinator.getSnapshot().replayId,
+    });
+    coordinator.detachRoot();
+    await vi.waitFor(() => expect(fixture.sendEnvelope).toHaveBeenCalledTimes(2));
+
+    const secondEnvelope = fixture.sendEnvelope.mock.calls[1]![0] as any;
+    expect(secondEnvelope[1][0][1]).toMatchObject({
+      replay_id: coordinator.getSnapshot().replayId,
+      segment_id: 1,
+      replay_type: 'session',
+      error_ids: ['f'.repeat(32)],
+    });
     expect(coordinator.getSnapshot()).toMatchObject({
       sentReplayId: coordinator.getSnapshot().replayId,
-      errorEventId: 'e'.repeat(32),
+      errorEventId: 'f'.repeat(32),
+      state: 'session',
     });
+  });
+
+  test('starts a fresh error buffer after the promoted session reaches its limit', async () => {
+    const fixture = makeSdk();
+    let randomCalls = 0;
+    const coordinator = new ReplayCoordinator({
+      sdk: fixture.sdk,
+      client: fixture.sdk.getClient()!,
+      replaysOnErrorSampleRate: 1,
+      random: () => (randomCalls++ < 32 ? 0.25 : 0.5),
+    });
+    coordinator.attachRoot(makeRuntime());
+    fixture.emitBeforeSend({
+      event_id: 'e'.repeat(32),
+      exception: { values: [{ type: 'Error', value: 'boom' }] },
+    });
+    await vi.waitFor(() => expect(coordinator.getSnapshot().state).toBe('session'));
+    const firstReplayId = coordinator.getSnapshot().replayId;
+    if (!firstReplayId) throw new Error('expected a replay id');
+
+    fixture
+      .getStartOptions()
+      .onStop?.(makeCapture({ replayId: firstReplayId, stopReason: 'duration' }));
+    await vi.waitFor(() => expect(coordinator.getSnapshot().state).toBe('buffer'));
+
+    expect(coordinator.getSnapshot().replayId).not.toBe(firstReplayId);
+    expect(coordinator.getSnapshot().eventCount).toBeGreaterThan(0);
   });
 
   test('non-error events cannot promote the buffer', () => {
@@ -169,6 +217,29 @@ describe('ReplayCoordinator', () => {
 
     expect(event.contexts?.replay).toBeUndefined();
     expect(coordinator.getSnapshot().state).toBe('buffer');
+    expect(fixture.sendEnvelope).not.toHaveBeenCalled();
+  });
+
+  test('errors while a Taro root is detached do not promote its retained buffer', () => {
+    const fixture = makeSdk();
+    const coordinator = new ReplayCoordinator({
+      sdk: fixture.sdk,
+      client: fixture.sdk.getClient()!,
+      replaysOnErrorSampleRate: 1,
+      random: () => 0.5,
+    });
+    coordinator.attachRoot(makeRuntime());
+    coordinator.detachRoot();
+    const event: Event = {
+      event_id: 'a'.repeat(32),
+      exception: { values: [{ type: 'Error', value: 'native page' }] },
+    };
+
+    fixture.emitBeforeSend(event);
+
+    expect(event.contexts?.replay).toBeUndefined();
+    expect(coordinator.getSnapshot().state).toBe('buffer');
+    expect(coordinator.getSnapshot().eventCount).toBeGreaterThan(0);
     expect(fixture.sendEnvelope).not.toHaveBeenCalled();
   });
 

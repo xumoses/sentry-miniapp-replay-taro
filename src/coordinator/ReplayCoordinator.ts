@@ -1,6 +1,11 @@
 import { createTaroReplay } from '../createTaroReplay';
 import { sendReplayCapture, utf8ByteLength } from '../envelope';
-import type { TaroReplayCapture, TaroReplayHandle, TaroReplayRuntime } from '../types';
+import type {
+  TaroReplayCapture,
+  TaroReplayHandle,
+  TaroReplayLimitOptions,
+  TaroReplayRuntime,
+} from '../types';
 import { boundReplayEvents } from './buffer';
 import type {
   ReplayAwareEvent,
@@ -43,11 +48,15 @@ function errorValue(cause: unknown): Error {
 export class ReplayCoordinator implements TaroReplayBridge {
   readonly #options: ReplayCoordinatorOptions;
   readonly #listeners = new Set<(snapshot: ReplayCoordinatorSnapshot) => void>();
-  readonly #replayId?: string;
+  readonly #random: () => number;
+  #replayId?: string;
+  #errorMode = false;
   #state: ReplayCoordinatorState;
   #handle: TaroReplayHandle | undefined;
+  #rootRuntime: TaroReplayRuntime | undefined;
   #captures: TaroReplayCapture[] = [];
-  #finalization?: Promise<void>;
+  #finalization: Promise<void> | undefined;
+  #pendingErrorIds: string[] = [];
   #errorEventId: string | undefined;
   #sentReplayId: string | undefined;
   #error: Error | undefined;
@@ -59,6 +68,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
     const enabled =
       typeof options.enabled === 'function' ? options.enabled() : options.enabled !== false;
     const random = options.random || Math.random;
+    this.#random = random;
     if (!enabled) {
       this.#state = 'disabled';
       return;
@@ -67,6 +77,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
       this.#state = 'session';
     } else if (sampled(clampRate(options.replaysOnErrorSampleRate), random)) {
       this.#state = 'buffer';
+      this.#errorMode = true;
     } else {
       this.#state = 'disabled';
       return;
@@ -83,28 +94,43 @@ export class ReplayCoordinator implements TaroReplayBridge {
       return false;
     }
     this.detachRoot();
-    this.#handle = createTaroReplay({
-      sdk: this.#options.sdk,
-      runtime,
-      ...(this.#replayId ? { replayId: this.#replayId } : {}),
-      ...(this.#options.privacy ? { privacy: this.#options.privacy } : {}),
-      ...(this.#state === 'buffer'
-        ? { limits: { ...DEFAULT_LIMITS, ...this.#options.limits } }
-        : this.#options.limits
-          ? { limits: this.#options.limits }
-          : {}),
-      sendOnManualStop: false,
-      sendOnDurationStop: false,
-      sendOnDispose: false,
-      onCapture: (capture) => this.#onCapture(capture),
-      onError: (cause) => this.#fail(cause),
-    });
-    const attached = this.#handle.start();
-    this.#notify();
-    return attached;
+    this.#rootRuntime = runtime;
+    if (this.#state === 'promoted') return true;
+    return this.#startRoot(runtime);
+  }
+
+  #startRoot(runtime: TaroReplayRuntime): boolean {
+    try {
+      this.#handle = createTaroReplay({
+        sdk: this.#options.sdk,
+        runtime,
+        ...(this.#replayId ? { replayId: this.#replayId } : {}),
+        ...(this.#options.privacy ? { privacy: this.#options.privacy } : {}),
+        limits: this.#recordingLimits(),
+        sendOnManualStop: false,
+        sendOnDurationStop: false,
+        sendOnDispose: false,
+        onCapture: (capture) => this.#onCapture(capture),
+        onError: (cause) => this.#fail(cause),
+      });
+      const attached = this.#handle.start();
+      this.#notify();
+      return attached;
+    } catch (cause) {
+      this.#fail(cause);
+      return false;
+    }
+  }
+
+  #recordingLimits(): TaroReplayLimitOptions {
+    const limits = { ...DEFAULT_LIMITS, ...this.#options.limits };
+    if (this.#state === 'buffer') return limits;
+    const { rollingWindowMs: _rollingWindowMs, ...sessionLimits } = limits;
+    return sessionLimits;
   }
 
   detachRoot(): void {
+    this.#rootRuntime = undefined;
     const handle = this.#handle;
     if (!handle) return;
     this.#handle = undefined;
@@ -166,7 +192,9 @@ export class ReplayCoordinator implements TaroReplayBridge {
     if (enabled) return this.#state !== 'disabled';
     this.#handle?.dispose();
     this.#handle = undefined;
+    this.#rootRuntime = undefined;
     this.#captures = [];
+    this.#pendingErrorIds = [];
     this.#detachErrorHook?.();
     this.#detachErrorHook = undefined;
     this.#state = 'disabled';
@@ -177,9 +205,8 @@ export class ReplayCoordinator implements TaroReplayBridge {
   #beforeSendEvent(event: ReplayAwareEvent): void {
     if (!this.refreshEnabled()) return;
     if (
-      this.#state !== 'buffer' ||
-      this.#finalization ||
-      (!this.#handle && this.#captures.length === 0) ||
+      !this.#rootRuntime ||
+      (this.#state !== 'buffer' && this.#state !== 'promoted' && this.#state !== 'session') ||
       !isErrorEvent(event) ||
       !event.event_id
     ) {
@@ -193,27 +220,44 @@ export class ReplayCoordinator implements TaroReplayBridge {
         replay_id: this.#replayId,
       },
     };
+    this.#rememberError(event.event_id);
+    if (this.#state !== 'buffer' || this.#finalization) {
+      this.#notify();
+      return;
+    }
     this.#state = 'promoted';
     this.#notify();
-    this.#finalization = this.#promote(event.event_id);
-    void this.#finalization.catch((cause) => this.#fail(cause));
+    this.#finalization = this.#promote();
+    void this.#finalization
+      .catch((cause) => this.#fail(cause))
+      .finally(() => {
+        this.#finalization = undefined;
+      });
   }
 
-  async #promote(errorEventId: string): Promise<void> {
+  async #promote(): Promise<void> {
     const current = await this.#stopCurrent('error');
     if (current) this.#storeBufferedCapture(current);
     const capture = this.#mergeBufferedCaptures();
     if (!capture) return;
     if (!this.refreshEnabled()) return;
+    const errorIds = [...this.#pendingErrorIds];
     await sendReplayCapture(this.#options.client, capture, {
-      errorIds: [errorEventId],
+      errorIds,
       replayType: 'buffer',
+      segmentId: this.#segmentId++,
     });
+    this.#pendingErrorIds = this.#pendingErrorIds.filter((id) => !errorIds.includes(id));
+    this.#captures = [];
     if (this.#replayId) this.#sentReplayId = this.#replayId;
-    this.#state = 'sent';
-    this.#detachErrorHook?.();
-    this.#detachErrorHook = undefined;
+    this.#state = 'session';
+    if (this.#rootRuntime) this.#startRoot(this.#rootRuntime);
     this.#notify();
+  }
+
+  #rememberError(eventId: string): void {
+    if (this.#pendingErrorIds.length >= 100 || this.#pendingErrorIds.includes(eventId)) return;
+    this.#pendingErrorIds.push(eventId);
   }
 
   async #stopCurrent(reason: string): Promise<TaroReplayCapture | undefined> {
@@ -258,6 +302,11 @@ export class ReplayCoordinator implements TaroReplayBridge {
 
   #fail(cause: unknown): void {
     this.#error = errorValue(cause);
+    this.#handle?.dispose();
+    this.#handle = undefined;
+    this.#rootRuntime = undefined;
+    this.#captures = [];
+    this.#pendingErrorIds = [];
     this.#state = 'error';
     this.#detachErrorHook?.();
     this.#detachErrorHook = undefined;
@@ -271,19 +320,36 @@ export class ReplayCoordinator implements TaroReplayBridge {
     ) {
       return;
     }
+    this.#handle = undefined;
     await this.#sendSessionCapture(capture, true);
   }
 
   async #sendSessionCapture(capture: TaroReplayCapture, terminal: boolean): Promise<void> {
     if (!this.refreshEnabled()) return;
     const segmentId = this.#segmentId++;
+    const errorIds = [...this.#pendingErrorIds];
     await sendReplayCapture(this.#options.client, capture, {
       replayType: 'session',
       segmentId,
+      errorIds,
     });
+    this.#pendingErrorIds = this.#pendingErrorIds.filter((id) => !errorIds.includes(id));
     if (this.#replayId) this.#sentReplayId = this.#replayId;
-    if (terminal) this.#state = 'sent';
+    if (terminal) {
+      if (this.#errorMode) this.#resetErrorBufferSession();
+      else this.#state = 'sent';
+    }
     this.#notify();
+  }
+
+  #resetErrorBufferSession(): void {
+    this.#replayId = replayId(this.#random);
+    this.#segmentId = 0;
+    this.#state = 'buffer';
+    this.#captures = [];
+    this.#pendingErrorIds = [];
+    this.#errorEventId = undefined;
+    if (this.#rootRuntime) this.#startRoot(this.#rootRuntime);
   }
 
   #notify(): void {
