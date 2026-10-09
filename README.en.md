@@ -78,6 +78,30 @@ page on ready/show and detaches on hide/unload, so native pages and background
 time are not recorded. Lifecycle failures are swallowed and never alter page
 navigation.
 
+Pass the host's `getReplayStyles` function when installing the lifecycle adapter:
+
+```ts
+import { installTaroReplayPageLifecycle } from '@xumoses/sentry-miniapp-replay-taro/taro/lifecycle';
+import { getReplayStyles } from './replayStyles.generated';
+
+installTaroReplayPageLifecycle({ bridge: getNativeTaroReplayBridge(), getReplayStyles });
+```
+
+The host build owns `replayStyles.generated`. Taro's virtual DOM contains nodes,
+classes, and inline styles, but no compiled WXSS. After styles are compiled, the
+host must resolve shared and page WXSS imports in their original order and map
+selectors to the recorder's serialized HTML tags. `getReplayStyles(route)`
+receives the page route without query strings or fragments and returns that
+browser CSS. The adapter forwards it as `stylesheet` to an SDK that supports
+stylesheet injection. That SDK embeds it in full snapshots and converts `rpx`
+using the recorded viewport width. The local candidate introducing this support
+is `@xumoses/sentry-miniapp@1.13.1-beta.5`; older SDKs ignore the option.
+
+Missing styles, an `undefined` result, or a throwing getter leave structural
+recording available, while external styling cannot be reproduced. Native
+component internals, platform default controls, and fonts still need comparison
+in Sentry and on target devices.
+
 The page hook starts after Taro's `useReady`, resumes on `useDidShow`, and
 records only the current `$taroPath` root. It disposes observers during
 `useDidHide` and `useUnload`. A missing page root is a safe no-op and does not
@@ -86,6 +110,8 @@ prevent the page from running.
 For a non-React integration, import `createTaroReplay` from the main entry point
 and provide an explicit Taro runtime adapter. The main entry does not statically
 depend on `@tarojs/taro` or `@tarojs/runtime`.
+Explicit runtime adapters may provide the same optional `getReplayStyles(route)`
+function.
 
 ## Privacy defaults
 

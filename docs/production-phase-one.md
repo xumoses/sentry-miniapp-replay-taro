@@ -25,6 +25,16 @@ The integration publishes a minimal `TaroReplayBridge`. Taro code imports no
 useTaroReplayRoot({ bridge: getNativeTaroReplayBridge() });
 ```
 
+For app-wide recording with compiled styles, the host installs the page lifecycle
+adapter with `getReplayStyles(route)`. The host build resolves shared/page WXSS
+imports in order and converts selectors to match the recorder's HTML tags. The
+runtime passes that CSS to the SDK recorder as `stylesheet`; the SDK embeds it
+in full snapshots and converts `rpx` with the recorded viewport width. The
+normalized route excludes query strings and fragments. A missing or failing
+style getter does not interrupt recording or page navigation. Stylesheet
+injection first becomes available in the local SDK candidate
+`@xumoses/sentry-miniapp@1.13.1-beta.5`; older SDKs ignore the option.
+
 ## Logical-session state machine
 
 `disabled` has no recorder, observer, timers, or envelopes. Otherwise one

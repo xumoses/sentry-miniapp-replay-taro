@@ -4,6 +4,47 @@ import { createTaroReplay } from '../src/createTaroReplay';
 import { makeRuntime, makeSdk } from './fixtures';
 
 describe('createTaroReplay', () => {
+  test('passes the normalized route stylesheet to the recorder', () => {
+    const fixture = makeSdk();
+    const stylesheet = '.checkout { padding: 24rpx; }';
+    const getReplayStyles = vi.fn(() => stylesheet);
+    const replay = createTaroReplay({
+      sdk: fixture.sdk,
+      runtime: { ...makeRuntime(), getReplayStyles },
+    });
+
+    expect(replay.start()).toBe(true);
+    expect(getReplayStyles).toHaveBeenCalledOnce();
+    expect(getReplayStyles).toHaveBeenCalledWith('pages/replay');
+    expect(fixture.getStartOptions()).toMatchObject({ stylesheet });
+  });
+
+  test('records without stylesheet injection when the runtime has no style getter', () => {
+    const fixture = makeSdk();
+    const replay = createTaroReplay({ sdk: fixture.sdk, runtime: makeRuntime() });
+
+    expect(replay.start()).toBe(true);
+    expect(fixture.getStartOptions()).not.toHaveProperty('stylesheet');
+  });
+
+  test('ignores a failing style getter without disrupting recording', () => {
+    const fixture = makeSdk();
+    const onError = vi.fn();
+    const getReplayStyles = vi.fn(() => {
+      throw new Error('compiled styles unavailable');
+    });
+    const replay = createTaroReplay({
+      sdk: fixture.sdk,
+      runtime: { ...makeRuntime(), getReplayStyles },
+      onError,
+    });
+
+    expect(replay.start()).toBe(true);
+    expect(getReplayStyles).toHaveBeenCalledWith('pages/replay');
+    expect(fixture.getStartOptions()).not.toHaveProperty('stylesheet');
+    expect(onError).not.toHaveBeenCalled();
+  });
+
   test('starts against the mounted Taro root with safe platform metadata', () => {
     const fixture = makeSdk();
     const runtime = makeRuntime();

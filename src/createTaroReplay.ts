@@ -182,6 +182,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         safely(() => options.getMetadata?.(context)),
         options.privacy?.allowUser === true,
       );
+      const stylesheet = safely(() => options.runtime.getReplayStyles?.(context.route));
 
       controller = options.sdk.startTaroDomReplayPoc({
         root,
@@ -189,6 +190,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         href,
         ...(windowInfo.windowWidth === undefined ? {} : { width: windowInfo.windowWidth }),
         ...(windowInfo.windowHeight === undefined ? {} : { height: windowInfo.windowHeight }),
+        ...(stylesheet === undefined ? {} : { stylesheet }),
         maskAllText: options.privacy?.maskAllText !== false,
         maskInputValues: options.privacy?.maskInputValues !== false,
         ...(options.replayId ? { replayId: options.replayId } : {}),

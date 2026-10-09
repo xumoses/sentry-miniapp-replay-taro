@@ -64,15 +64,28 @@ App({ globalData: { sentryBridge: { replay: replay.bridge } } });
 ```ts
 import Taro from '@tarojs/taro';
 import { installTaroReplayPageLifecycle } from '@xumoses/sentry-miniapp-replay-taro/taro/lifecycle';
+import { getReplayStyles } from './replayStyles.generated';
 
 installTaroReplayPageLifecycle({
   bridge: Taro.getApp()?.globalData?.sentryBridge?.replay,
+  getReplayStyles,
 });
 ```
 
 安装器在页面 ready/show 时 attach，在 hide/unload 时 detach。进入原生页或小程序后台
 不会继续录制，返回 Taro 后沿用当前 Replay；任何生命周期异常都会安全降级，不改变页面
 原始返回值或导航结果。
+
+`replayStyles.generated` 由宿主构建生成，不属于适配包。Taro 虚拟 DOM 只有节点、
+class 和内联样式，不包含最终 WXSS。宿主需在样式编译完成后把当前页面依赖的共享和
+页面 WXSS（含 `@import`）按原顺序合并，转换成与 recorder 输出节点对应的浏览器
+CSS，并提供 `getReplayStyles(route)`。参数是已去除 query/hash 的页面路由。
+适配层将返回的 CSS 作为 `stylesheet` 传给 SDK；支持该选项的 SDK 把样式写入完整
+快照，并按录制窗口宽度换算 `rpx`。本地候选的样式注入最低版本为
+`@xumoses/sentry-miniapp@1.13.1-beta.5`；旧版 SDK 会忽略该选项。
+
+未提供样式、返回 `undefined` 或读取样式失败时仍可录制结构和内联样式，但外部样式
+无法还原。原生组件内部、平台默认控件和字体等仍需在 Sentry 与目标设备上比较验证。
 
 单页调试也可以使用 hook：
 
@@ -94,6 +107,7 @@ hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 
 
 如果不使用 React，可以从主入口导入 `createTaroReplay`，并显式提供 Taro runtime
 适配对象。该入口不会静态依赖 `@tarojs/taro` 或 `@tarojs/runtime`。
+显式 runtime 可通过可选的 `getReplayStyles(route)` 提供同一份编译样式。
 
 ## 隐私默认值
 

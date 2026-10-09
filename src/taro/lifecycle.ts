@@ -27,7 +27,10 @@ function isObject(value: unknown): value is object {
   return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
 
-function createRuntime(page: unknown): TaroReplayRuntime {
+function createRuntime(
+  page: unknown,
+  getReplayStyles?: TaroReplayRuntime['getReplayStyles'],
+): TaroReplayRuntime {
   const taro = Taro as unknown as {
     getCurrentInstance(): ReturnType<TaroReplayRuntime['getCurrentInstance']>;
     getWindowInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getWindowInfo']>>;
@@ -52,6 +55,7 @@ function createRuntime(page: unknown): TaroReplayRuntime {
           }
         : taro.getCurrentInstance(),
     getWindowInfo: () => taro.getWindowInfo?.() || taro.getSystemInfoSync?.() || {},
+    ...(getReplayStyles ? { getReplayStyles } : {}),
     getEnv: () => taro.getEnv?.() || 'unknown',
     getAccountInfoSync: () => taro.getAccountInfoSync?.() || {},
     getAppBaseInfo: () => taro.getAppBaseInfo?.() || {},
@@ -74,14 +78,20 @@ function wrapLifecycle(
 }
 
 /** Instruments every Taro page created after installation without changing page components. */
-export function installTaroReplayPageLifecycle({ bridge }: { bridge?: TaroReplayBridge }): void {
+export function installTaroReplayPageLifecycle({
+  bridge,
+  getReplayStyles,
+}: {
+  bridge?: TaroReplayBridge;
+  getReplayStyles?: TaroReplayRuntime['getReplayStyles'];
+}): void {
   if (!bridge || installedBridges.has(bridge)) return;
   installedBridges.add(bridge);
 
   hooks.tap('modifyPageObject', (pageConfig: PageLifecycleConfig) => {
     const scheduleAttach = (page: unknown) => {
       if (!isObject(page)) {
-        bridge.attachRoot(createRuntime(page));
+        bridge.attachRoot(createRuntime(page, getReplayStyles));
         return;
       }
       if (
@@ -98,7 +108,7 @@ export function installTaroReplayPageLifecycle({ bridge }: { bridge?: TaroReplay
         if (!visiblePages.has(page) || attachedPages.has(page)) return;
         attachedPages.add(page);
         try {
-          bridge.attachRoot(createRuntime(page));
+          bridge.attachRoot(createRuntime(page, getReplayStyles));
         } catch {
           // Replay is diagnostic-only and must never alter Taro page navigation.
         }

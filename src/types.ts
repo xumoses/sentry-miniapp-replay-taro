@@ -88,6 +88,8 @@ export interface StartTaroReplayRecorderOptions {
   href?: string;
   width?: number;
   height?: number;
+  /** Compiled page and shared styles supplied by the host application. */
+  stylesheet?: string;
   maskAllText?: boolean;
   maskInputValues?: boolean;
   maxDurationMs?: number;
@@ -139,6 +141,8 @@ export interface TaroReplayRuntime {
     windowWidth?: number;
     windowHeight?: number;
   };
+  /** Returns compiled shared and page CSS for a normalized route. */
+  getReplayStyles?(route: string): string | undefined;
   getEnv?(): string;
   getAccountInfoSync?(): {
     miniProgram?: {

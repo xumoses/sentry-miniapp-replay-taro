@@ -1,6 +1,6 @@
 {
   "name": "@xumoses/sentry-miniapp-replay-taro",
-  "version": "0.1.0-beta.3",
+  "version": "0.1.0-beta.4",
   "description": "Experimental Taro virtual-DOM Session Replay adapter for sentry-miniapp",
   "license": "MIT",
   "repository": {

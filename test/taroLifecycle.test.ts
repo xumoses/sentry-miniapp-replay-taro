@@ -32,6 +32,31 @@ describe('installTaroReplayPageLifecycle', () => {
     nextTicks.length = 0;
   });
 
+  test('supplies the host style getter on the attached page runtime', () => {
+    const bridge = {
+      attachRoot: vi.fn((_runtime: TaroReplayRuntime) => true),
+      detachRoot: vi.fn(),
+      flush: vi.fn(() => Promise.resolve()),
+      refreshEnabled: vi.fn(() => true),
+      getSnapshot: vi.fn(() => ({ state: 'buffer' as const, eventCount: 0, approximateBytes: 0 })),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    const getReplayStyles = vi.fn((route: string) => `.page { content: "${route}"; }`);
+    const page = { onReady: vi.fn() };
+
+    installTaroReplayPageLifecycle({ bridge, getReplayStyles });
+    const instrument = tap.mock.calls[0]![1] as (config: typeof page) => void;
+    instrument(page);
+    page.onReady.call({ route: 'pages/demo/index' });
+    nextTicks.shift()?.();
+
+    const runtime = bridge.attachRoot.mock.calls[0]![0];
+    expect(runtime.getReplayStyles?.('pages/demo/index')).toBe(
+      '.page { content: "pages/demo/index"; }',
+    );
+    expect(getReplayStyles).toHaveBeenCalledWith('pages/demo/index');
+  });
+
   test('attaches a visible Taro page once and detaches it once', () => {
     const bridge = {
       attachRoot: vi.fn((_runtime: TaroReplayRuntime) => true),
