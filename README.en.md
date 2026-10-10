@@ -83,8 +83,13 @@ Pass the host's `getReplayStyles` function when installing the lifecycle adapter
 ```ts
 import { installTaroReplayPageLifecycle } from '@xumoses/sentry-miniapp-replay-taro/taro/lifecycle';
 import { getReplayStyles } from './replayStyles.generated';
+import { getReplayImageSources } from './replayImages.generated';
 
-installTaroReplayPageLifecycle({ bridge: getNativeTaroReplayBridge(), getReplayStyles });
+installTaroReplayPageLifecycle({
+  bridge: getNativeTaroReplayBridge(),
+  getReplayStyles,
+  getReplayImageSources,
+});
 ```
 
 The host build owns `replayStyles.generated`. Taro's virtual DOM contains nodes,
@@ -96,6 +101,15 @@ browser CSS. The adapter forwards it as `stylesheet` to an SDK that supports
 stylesheet injection. That SDK embeds it in full snapshots and converts `rpx`
 using the recorded viewport width. The local candidate introducing this support
 is `@xumoses/sentry-miniapp@1.13.1-beta.5`; older SDKs ignore the option.
+
+This release also accepts optional `getReplayImageSources(route)` for trusted
+static raster images referenced by that route. Image recording requires
+`@xumoses/sentry-miniapp@1.13.1-beta.6`. The host build owns
+`replayImages.generated`: exact static resource paths map to size-bounded
+PNG/JPEG/GIF/WebP data URIs, forwarded as `staticImageSources` to the SDK. Exclude
+SVG, remote URLs, and runtime user images. The map does not permit arbitrary data
+URIs or change privacy masking. A missing or throwing getter is a safe no-op;
+local mini-program image paths may remain unavailable in browser playback.
 
 Missing styles, an `undefined` result, or a throwing getter leave structural
 recording available, while external styling cannot be reproduced. Native
@@ -111,7 +125,8 @@ For a non-React integration, import `createTaroReplay` from the main entry point
 and provide an explicit Taro runtime adapter. The main entry does not statically
 depend on `@tarojs/taro` or `@tarojs/runtime`.
 Explicit runtime adapters may provide the same optional `getReplayStyles(route)`
-function.
+and `getReplayImageSources(route)` functions for compiled CSS and trusted static
+images.
 
 ## Privacy defaults
 

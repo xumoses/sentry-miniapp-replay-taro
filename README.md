@@ -65,10 +65,12 @@ App({ globalData: { sentryBridge: { replay: replay.bridge } } });
 import Taro from '@tarojs/taro';
 import { installTaroReplayPageLifecycle } from '@xumoses/sentry-miniapp-replay-taro/taro/lifecycle';
 import { getReplayStyles } from './replayStyles.generated';
+import { getReplayImageSources } from './replayImages.generated';
 
 installTaroReplayPageLifecycle({
   bridge: Taro.getApp()?.globalData?.sentryBridge?.replay,
   getReplayStyles,
+  getReplayImageSources,
 });
 ```
 
@@ -83,6 +85,13 @@ CSS，并提供 `getReplayStyles(route)`。参数是已去除 query/hash 的页�
 适配层将返回的 CSS 作为 `stylesheet` 传给 SDK；支持该选项的 SDK 把样式写入完整
 快照，并按录制窗口宽度换算 `rpx`。本地候选的样式注入最低版本为
 `@xumoses/sentry-miniapp@1.13.1-beta.5`；旧版 SDK 会忽略该选项。
+
+本版可通过可选的 `getReplayImageSources(route)` 提供同一路由引用的可信静态 raster
+图片映射；图片录制需要 `@xumoses/sentry-miniapp@1.13.1-beta.6`。宿主构建生成
+`replayImages.generated`，以静态资源路径为精确 key、以经过大小限制的 PNG/JPEG/GIF/
+WebP data URI 为值；适配层将映射作为 `staticImageSources` 传给 SDK。不要加入 SVG、
+远程 URL 或运行时用户图片；该映射不会放开任意 data URI，也不会改变隐私遮罩规则。
+读取失败或未提供映射时安全跳过；小程序本地图片路径仍可能无法在浏览器还原。
 
 未提供样式、返回 `undefined` 或读取样式失败时仍可录制结构和内联样式，但外部样式
 无法还原。原生组件内部、平台默认控件和字体等仍需在 Sentry 与目标设备上比较验证。
@@ -107,7 +116,8 @@ hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 
 
 如果不使用 React，可以从主入口导入 `createTaroReplay`，并显式提供 Taro runtime
 适配对象。该入口不会静态依赖 `@tarojs/taro` 或 `@tarojs/runtime`。
-显式 runtime 可通过可选的 `getReplayStyles(route)` 提供同一份编译样式。
+显式 runtime 可通过可选的 `getReplayStyles(route)` 和 `getReplayImageSources(route)`
+提供同一份编译样式与可信静态图片映射。
 
 ## 隐私默认值
 

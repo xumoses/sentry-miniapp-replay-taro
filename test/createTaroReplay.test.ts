@@ -4,6 +4,41 @@ import { createTaroReplay } from '../src/createTaroReplay';
 import { makeRuntime, makeSdk } from './fixtures';
 
 describe('createTaroReplay', () => {
+  test('passes only the normalized route static images to the recorder', () => {
+    const fixture = makeSdk();
+    const staticImageSources = { '/taroMiniapp/logo.png': 'data:image/png;base64,aGVsbG8=' };
+    const getReplayImageSources = vi.fn(() => staticImageSources);
+    const replay = createTaroReplay({
+      sdk: fixture.sdk,
+      runtime: { ...makeRuntime(), getReplayImageSources },
+    });
+
+    expect(replay.start()).toBe(true);
+    expect(getReplayImageSources).toHaveBeenCalledExactlyOnceWith('pages/replay');
+    expect(fixture.getStartOptions()?.staticImageSources).toBe(staticImageSources);
+  });
+
+  test('keeps recording when the host static image getter is unavailable or fails', () => {
+    for (const getReplayImageSources of [
+      undefined,
+      () => {
+        throw new Error('assets unavailable');
+      },
+    ]) {
+      const fixture = makeSdk();
+      const onError = vi.fn();
+      const replay = createTaroReplay({
+        sdk: fixture.sdk,
+        runtime: { ...makeRuntime(), ...(getReplayImageSources ? { getReplayImageSources } : {}) },
+        onError,
+      });
+
+      expect(replay.start()).toBe(true);
+      expect(fixture.getStartOptions()).not.toHaveProperty('staticImageSources');
+      expect(onError).not.toHaveBeenCalled();
+    }
+  });
+
   test('passes the normalized route stylesheet to the recorder', () => {
     const fixture = makeSdk();
     const stylesheet = '.checkout { padding: 24rpx; }';

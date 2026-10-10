@@ -212,6 +212,25 @@ export class ReplayCoordinator implements TaroReplayBridge {
     ) {
       return;
     }
+    let prepared: TaroReplayCapture | undefined;
+    if (this.#state === 'buffer' && !this.#finalization) {
+      const current = this.#handle?.getController()?.getCapture();
+      prepared = this.#mergeBufferedCaptures([...this.#captures, ...(current ? [current] : [])]);
+      if (!prepared) {
+        // This hook runs synchronously before the error envelope is constructed.
+        // Never associate an error with a Replay that cannot contain a checkpoint.
+        if (event.contexts?.replay?.replay_id === this.#replayId) {
+          event.contexts = { ...event.contexts };
+          delete event.contexts.replay;
+        }
+        const handle = this.#handle;
+        this.#handle = undefined;
+        handle?.dispose();
+        this.#resetErrorBufferSession();
+        this.#notify();
+        return;
+      }
+    }
     this.#errorEventId = event.event_id;
     event.contexts = {
       ...event.contexts,
@@ -227,7 +246,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
     }
     this.#state = 'promoted';
     this.#notify();
-    this.#finalization = this.#promote();
+    this.#finalization = this.#promote(prepared!);
     void this.#finalization
       .catch((cause) => this.#fail(cause))
       .finally(() => {
@@ -235,11 +254,15 @@ export class ReplayCoordinator implements TaroReplayBridge {
       });
   }
 
-  async #promote(): Promise<void> {
+  async #promote(prepared: TaroReplayCapture): Promise<void> {
     const current = await this.#stopCurrent('error');
-    if (current) this.#storeBufferedCapture(current);
-    const capture = this.#mergeBufferedCaptures();
-    if (!capture) return;
+    // Send exactly the synchronously validated baseline/tail. Async clock or
+    // navigation changes must not invalidate an already-associated error.
+    const capture = {
+      ...prepared,
+      endedAt: current?.endedAt ?? prepared.endedAt ?? (this.#options.now || Date.now)(),
+      stopReason: 'error',
+    };
     if (!this.refreshEnabled()) return;
     const errorIds = [...this.#pendingErrorIds];
     await sendReplayCapture(this.#options.client, capture, {
@@ -267,8 +290,9 @@ export class ReplayCoordinator implements TaroReplayBridge {
     return handle.stop(reason);
   }
 
-  #mergeBufferedCaptures(): TaroReplayCapture | undefined {
-    const captures = this.#captures;
+  #mergeBufferedCaptures(
+    captures: readonly TaroReplayCapture[] = this.#captures,
+  ): TaroReplayCapture | undefined {
     if (!captures.length) return undefined;
     const last = captures[captures.length - 1]!;
     const limits = { ...DEFAULT_LIMITS, ...this.#options.limits };
@@ -279,6 +303,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
       maxEvents: limits.maxEvents,
       maxBytes: limits.maxBytes,
     });
+    if (!bounded.length) return undefined;
     const approximateBytes = bounded.reduce(
       (sum, event) => sum + utf8ByteLength(JSON.stringify(event)),
       0,

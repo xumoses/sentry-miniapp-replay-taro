@@ -1,3 +1,4 @@
+import { createCheckpointRebaser } from './rebase';
 import { utf8ByteLength } from '../envelope';
 import type { TaroReplayEvent } from '../types';
 
@@ -7,42 +8,47 @@ export interface ReplayBufferBounds {
   maxEvents: number;
   maxBytes: number;
 }
-
 function eventBytes(event: TaroReplayEvent): number {
   return utf8ByteLength(JSON.stringify(event));
 }
 
-/**
- * Retains the newest Meta + FullSnapshot checkpoint and a bounded tail.
- * The result remains playable even after time/count/byte eviction.
- */
+/** Evicted DOM events are folded into a cloned baseline before retaining the playable tail. */
 export function boundReplayEvents(
   events: TaroReplayEvent[],
   bounds: ReplayBufferBounds,
 ): TaroReplayEvent[] {
+  if (bounds.maxEvents < 2) return [];
   const cutoff = bounds.now - Math.max(0, bounds.windowMs);
   let fullSnapshotIndex = -1;
-  for (let index = events.length - 1; index >= 0; index--) {
+  for (let index = events.length - 1; index >= 0; index--)
     if (events[index]?.type === 2) {
       fullSnapshotIndex = index;
       break;
     }
-  }
   if (fullSnapshotIndex < 0) return [];
   let metaIndex = fullSnapshotIndex - 1;
   while (metaIndex >= 0 && events[metaIndex]?.type !== 4) metaIndex--;
-  const checkpoints = [...(metaIndex >= 0 ? [events[metaIndex]!] : []), events[fullSnapshotIndex]!];
-  const tail = events
-    .slice(fullSnapshotIndex + 1)
-    .filter((event) => event.type !== 4 && event.type !== 2 && event.timestamp >= cutoff);
-  const bounded = [...checkpoints, ...tail];
-  let bytes = bounded.reduce((sum, event) => sum + eventBytes(event), 0);
-  while (
-    bounded.length > Math.max(2, bounds.maxEvents) ||
-    (bytes > bounds.maxBytes && bounded.length > 2)
-  ) {
-    const removed = bounded.splice(2, 1)[0];
-    if (removed) bytes -= eventBytes(removed);
+  const meta = metaIndex >= 0 ? events[metaIndex] : undefined;
+  const initial = events[fullSnapshotIndex]!;
+  const rebaser = createCheckpointRebaser(initial);
+  const tail: TaroReplayEvent[] = [];
+  for (const event of events.slice(fullSnapshotIndex + 1)) {
+    if (event.type === 4 || event.type === 2) continue;
+    if (event.timestamp < cutoff) rebaser.apply(event);
+    else tail.push(event);
   }
-  return bounded;
+  const checkpoint = (): TaroReplayEvent[] => {
+    const snapshot = rebaser.getSnapshot();
+    const alignedMeta =
+      meta && snapshot !== initial ? { ...meta, timestamp: snapshot.timestamp - 1 } : meta;
+    return [...(alignedMeta ? [alignedMeta] : []), snapshot, ...tail];
+  };
+  let bounded = checkpoint();
+  let bytes = bounded.reduce((sum, event) => sum + eventBytes(event), 0);
+  while (tail.length && (bounded.length > bounds.maxEvents || bytes > bounds.maxBytes)) {
+    rebaser.apply(tail.shift()!);
+    bounded = checkpoint();
+    bytes = bounded.reduce((sum, event) => sum + eventBytes(event), 0);
+  }
+  return bytes > bounds.maxBytes ? [] : bounded;
 }

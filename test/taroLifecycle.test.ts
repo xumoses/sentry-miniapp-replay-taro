@@ -32,7 +32,7 @@ describe('installTaroReplayPageLifecycle', () => {
     nextTicks.length = 0;
   });
 
-  test('supplies the host style getter on the attached page runtime', () => {
+  test('supplies the host style and static image getters on the attached page runtime', () => {
     const bridge = {
       attachRoot: vi.fn((_runtime: TaroReplayRuntime) => true),
       detachRoot: vi.fn(),
@@ -42,9 +42,11 @@ describe('installTaroReplayPageLifecycle', () => {
       subscribe: vi.fn(() => () => undefined),
     };
     const getReplayStyles = vi.fn((route: string) => `.page { content: "${route}"; }`);
+    const staticImageSources = { '/taroMiniapp/logo.png': 'data:image/png;base64,aGVsbG8=' };
+    const getReplayImageSources = vi.fn(() => staticImageSources);
     const page = { onReady: vi.fn() };
 
-    installTaroReplayPageLifecycle({ bridge, getReplayStyles });
+    installTaroReplayPageLifecycle({ bridge, getReplayStyles, getReplayImageSources });
     const instrument = tap.mock.calls[0]![1] as (config: typeof page) => void;
     instrument(page);
     page.onReady.call({ route: 'pages/demo/index' });
@@ -55,6 +57,8 @@ describe('installTaroReplayPageLifecycle', () => {
       '.page { content: "pages/demo/index"; }',
     );
     expect(getReplayStyles).toHaveBeenCalledWith('pages/demo/index');
+    expect(runtime.getReplayImageSources?.('pages/demo/index')).toBe(staticImageSources);
+    expect(getReplayImageSources).toHaveBeenCalledWith('pages/demo/index');
   });
 
   test('attaches a visible Taro page once and detaches it once', () => {

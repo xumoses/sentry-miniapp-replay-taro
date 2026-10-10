@@ -30,6 +30,7 @@ function isObject(value: unknown): value is object {
 function createRuntime(
   page: unknown,
   getReplayStyles?: TaroReplayRuntime['getReplayStyles'],
+  getReplayImageSources?: TaroReplayRuntime['getReplayImageSources'],
 ): TaroReplayRuntime {
   const taro = Taro as unknown as {
     getCurrentInstance(): ReturnType<TaroReplayRuntime['getCurrentInstance']>;
@@ -56,6 +57,7 @@ function createRuntime(
         : taro.getCurrentInstance(),
     getWindowInfo: () => taro.getWindowInfo?.() || taro.getSystemInfoSync?.() || {},
     ...(getReplayStyles ? { getReplayStyles } : {}),
+    ...(getReplayImageSources ? { getReplayImageSources } : {}),
     getEnv: () => taro.getEnv?.() || 'unknown',
     getAccountInfoSync: () => taro.getAccountInfoSync?.() || {},
     getAppBaseInfo: () => taro.getAppBaseInfo?.() || {},
@@ -81,9 +83,11 @@ function wrapLifecycle(
 export function installTaroReplayPageLifecycle({
   bridge,
   getReplayStyles,
+  getReplayImageSources,
 }: {
   bridge?: TaroReplayBridge;
   getReplayStyles?: TaroReplayRuntime['getReplayStyles'];
+  getReplayImageSources?: TaroReplayRuntime['getReplayImageSources'];
 }): void {
   if (!bridge || installedBridges.has(bridge)) return;
   installedBridges.add(bridge);
@@ -91,7 +95,7 @@ export function installTaroReplayPageLifecycle({
   hooks.tap('modifyPageObject', (pageConfig: PageLifecycleConfig) => {
     const scheduleAttach = (page: unknown) => {
       if (!isObject(page)) {
-        bridge.attachRoot(createRuntime(page, getReplayStyles));
+        bridge.attachRoot(createRuntime(page, getReplayStyles, getReplayImageSources));
         return;
       }
       if (
@@ -108,7 +112,7 @@ export function installTaroReplayPageLifecycle({
         if (!visiblePages.has(page) || attachedPages.has(page)) return;
         attachedPages.add(page);
         try {
-          bridge.attachRoot(createRuntime(page, getReplayStyles));
+          bridge.attachRoot(createRuntime(page, getReplayStyles, getReplayImageSources));
         } catch {
           // Replay is diagnostic-only and must never alter Taro page navigation.
         }
