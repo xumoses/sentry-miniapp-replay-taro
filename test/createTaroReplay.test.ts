@@ -212,4 +212,41 @@ describe('createTaroReplay', () => {
       email: '[Filtered]',
     });
   });
+  test('uses actual OS/device and WeChat versions rather than confusing app and OS versions', () => {
+    const f = makeSdk();
+    const replay = createTaroReplay({
+      sdk: f.sdk,
+      runtime: {
+        ...makeRuntime(),
+        getDeviceInfo: () => ({
+          brand: 'Apple',
+          model: 'iPhone 16',
+          system: 'iOS 18.3',
+          platform: 'ios',
+        }),
+        getAppBaseInfo: () => ({ version: '8.0.79', SDKVersion: '3.6.2', language: 'zh_CN' }),
+      },
+      privacy: {
+        maskAllInputs: true,
+        maskInputValues: false,
+        blockAllMedia: false,
+        maskAttributes: ['title'],
+      },
+    });
+    replay.start();
+    expect(f.getStartOptions()).toMatchObject({
+      maskInputValues: true,
+      maskAllInputs: true,
+      blockAllMedia: false,
+      maskAttributes: ['title'],
+      metadata: {
+        contexts: {
+          os: { name: 'iOS', version: '18.3' },
+          browser: { name: 'WeChat', version: '8.0.79' },
+          device: { brand: 'Apple', model: 'iPhone 16' },
+        },
+      },
+    });
+    replay.dispose();
+  });
 });

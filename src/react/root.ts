@@ -1,6 +1,13 @@
 import { document, MutationObserver } from '@tarojs/runtime';
-import Taro, { useDidHide, useDidShow, useReady, useUnload } from '@tarojs/taro';
-import { useEffect, useState } from 'react';
+import Taro, {
+  useDidHide,
+  useDidShow,
+  usePageScroll,
+  useReady,
+  useResize,
+  useUnload,
+} from '@tarojs/taro';
+import { useEffect, useRef, useState } from 'react';
 
 import type { ReplayCoordinatorSnapshot, TaroReplayBridge } from '../coordinator/types';
 import type { TaroReplayRuntime } from '../types';
@@ -13,6 +20,7 @@ function createRuntime(): TaroReplayRuntime {
     getEnv?(): string;
     getAccountInfoSync?(): ReturnType<NonNullable<TaroReplayRuntime['getAccountInfoSync']>>;
     getAppBaseInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getAppBaseInfo']>>;
+    getDeviceInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getDeviceInfo']>>;
   };
   return {
     document,
@@ -22,8 +30,11 @@ function createRuntime(): TaroReplayRuntime {
     getEnv: () => taro.getEnv?.() || 'unknown',
     getAccountInfoSync: () => taro.getAccountInfoSync?.() || {},
     getAppBaseInfo: () => taro.getAppBaseInfo?.() || {},
+    getDeviceInfo: () => taro.getDeviceInfo?.() || {},
   };
 }
+
+const rootOwners = new WeakMap<TaroReplayBridge, object>();
 
 export interface UseTaroReplayRootOptions {
   bridge?: TaroReplayBridge;
@@ -52,11 +63,34 @@ export function useTaroReplaySnapshot({
 export function useTaroReplayRoot(options: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
   const { bridge } = options;
   const snapshot = useTaroReplaySnapshot(options);
-  useReady(() => bridge?.attachRoot(createRuntime()));
-  useDidShow(() => bridge?.attachRoot(createRuntime()));
-  useDidHide(() => bridge?.detachRoot());
-  useUnload(() => bridge?.detachRoot());
-  useEffect(() => () => bridge?.detachRoot(), [bridge]);
+  const owner = useRef({});
+  const hidden = useRef(false);
+  const attach = () => {
+    if (!bridge || hidden.current || rootOwners.get(bridge) === owner.current) return;
+    if (bridge.attachRoot(createRuntime())) rootOwners.set(bridge, owner.current);
+  };
+  const detach = () => {
+    hidden.current = true;
+    if (bridge && rootOwners.get(bridge) === owner.current) {
+      rootOwners.delete(bridge);
+      bridge.detachRoot();
+    }
+  };
+  useReady(attach);
+  useDidShow(() => {
+    hidden.current = false;
+    attach();
+  });
+  usePageScroll((event) => {
+    if (bridge && rootOwners.get(bridge) === owner.current) bridge.recordPageScroll?.(event);
+  });
+  useResize((event) => {
+    if (bridge && rootOwners.get(bridge) === owner.current)
+      bridge.recordViewport?.({ width: event.size.windowWidth, height: event.size.windowHeight });
+  });
+  useDidHide(detach);
+  useUnload(detach);
+  useEffect(() => detach, [bridge]);
   return snapshot;
 }
 

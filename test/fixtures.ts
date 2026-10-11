@@ -107,13 +107,16 @@ export function makeSdk(): {
     getClient: () => ({
       getDsn: () => makeDsn('https://public@example.test/1'),
       getOptions: () => ({ environment: 'staging', release: 'app@2.3.4' }),
-      on: (hook: 'beforeAddBreadcrumb' | 'beforeSendEvent', callback: any) => {
+      on: (
+        hook: 'beforeAddBreadcrumb' | 'beforeSendEvent' | 'beforeSendFeedback',
+        callback: any,
+      ) => {
         if (hook === 'beforeAddBreadcrumb') breadcrumbHook = callback;
-        else beforeSendHook = callback;
+        else if (hook === 'beforeSendEvent') beforeSendHook = callback;
         return () => {
           detachCount++;
           if (hook === 'beforeAddBreadcrumb') breadcrumbHook = undefined;
-          else beforeSendHook = undefined;
+          else if (hook === 'beforeSendEvent') beforeSendHook = undefined;
         };
       },
       sendEnvelope,

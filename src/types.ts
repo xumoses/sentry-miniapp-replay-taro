@@ -1,4 +1,11 @@
-import type { Breadcrumb, DsnComponents, Event, EventHint, ReplayEnvelope } from '@sentry/core';
+import type {
+  Breadcrumb,
+  DsnComponents,
+  Event,
+  EventHint,
+  FeedbackEvent,
+  ReplayEnvelope,
+} from '@sentry/core';
 
 export interface TaroReplayEvent {
   type: number;
@@ -16,6 +23,7 @@ export interface TaroReplayMetadata {
   user?: Record<string, unknown>;
   tags?: Record<string, string | number | boolean>;
   contexts?: Record<string, Record<string, unknown>>;
+  dist?: string;
 }
 
 export interface TaroReplayAttributeLike {
@@ -80,6 +88,9 @@ export interface TaroReplayRecorderController {
   addBreadcrumb(breadcrumb: Breadcrumb): boolean;
   getCapture(): TaroReplayCapture;
   stop(reason?: string): TaroReplayCapture;
+  takeSegment?(): TaroReplayCapture;
+  recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): boolean;
+  recordViewport?(size: { width: number; height: number }): boolean;
 }
 
 export interface StartTaroReplayRecorderOptions {
@@ -94,8 +105,12 @@ export interface StartTaroReplayRecorderOptions {
   staticImageSources?: Readonly<Record<string, string>>;
   maskAllText?: boolean;
   maskInputValues?: boolean;
+  maskAllInputs?: boolean;
+  blockAllMedia?: boolean;
+  maskAttributes?: string[];
   maxDurationMs?: number;
   maxEvents?: number;
+  mutationLimit?: number;
   maxBytes?: number;
   rollingWindowMs?: number;
   replayId?: string;
@@ -109,6 +124,7 @@ export interface SentryReplayClient {
   getOptions?(): {
     environment?: string | undefined;
     release?: string | undefined;
+    dist?: string | undefined;
   };
   on?(
     hook: 'beforeAddBreadcrumb',
@@ -117,6 +133,11 @@ export interface SentryReplayClient {
   on?(
     hook: 'beforeSendEvent',
     callback: (event: Event, hint?: EventHint) => void,
+  ): (() => void) | undefined;
+  recordDroppedEvent?(reason: 'queue_overflow', category: 'replay', count?: number): void;
+  on?(
+    hook: 'beforeSendFeedback',
+    callback: (event: FeedbackEvent, options?: { includeReplay?: boolean }) => void,
   ): (() => void) | undefined;
   sendEnvelope(envelope: ReplayEnvelope): PromiseLike<unknown>;
 }
@@ -142,6 +163,8 @@ export interface TaroReplayRuntime {
   getWindowInfo?(): {
     windowWidth?: number;
     windowHeight?: number;
+    screenWidth?: number;
+    screenHeight?: number;
   };
   /** Returns compiled shared and page CSS for a normalized route. */
   getReplayStyles?(route: string): string | undefined;
@@ -156,7 +179,10 @@ export interface TaroReplayRuntime {
   };
   getAppBaseInfo?(): {
     SDKVersion?: string;
+    version?: string;
+    language?: string;
   };
+  getDeviceInfo?(): { brand?: string; model?: string; system?: string; platform?: string };
 }
 
 export interface TaroReplayContext {
@@ -172,6 +198,9 @@ export interface TaroReplayPrivacyOptions {
   maskAllText?: boolean;
   /** Default true. */
   maskInputValues?: boolean;
+  maskAllInputs?: boolean;
+  blockAllMedia?: boolean;
+  maskAttributes?: string[];
   /** Default false. Custom metadata.user is discarded unless explicitly enabled. */
   allowUser?: boolean;
 }
@@ -179,6 +208,7 @@ export interface TaroReplayPrivacyOptions {
 export interface TaroReplayLimitOptions {
   maxDurationMs?: number;
   maxEvents?: number;
+  mutationLimit?: number;
   maxBytes?: number;
   rollingWindowMs?: number;
 }
@@ -202,8 +232,12 @@ export interface CreateTaroReplayOptions {
 }
 
 export interface TaroReplayControllerView {
+  addBreadcrumb?(breadcrumb: Breadcrumb): boolean;
   readonly replayId: string;
   getCapture(): TaroReplayCapture;
+  takeSegment?(): TaroReplayCapture;
+  recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): boolean;
+  recordViewport?(size: { width: number; height: number }): boolean;
 }
 
 export interface TaroReplayHandle {

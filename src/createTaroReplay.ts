@@ -66,6 +66,7 @@ function mergeMetadata(
 }
 
 function shouldSendCapture(options: CreateTaroReplayOptions, reason: string | null): boolean {
+  if (reason === 'startup-error') return false;
   if (reason === 'page-unload' || reason === 'dispose') return options.sendOnDispose === true;
   if (reason === 'duration') return options.sendOnDurationStop !== false;
   return options.sendOnManualStop !== false;
@@ -79,7 +80,11 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
   let terminal = false;
 
   const reportError = (error: unknown): void => {
-    options.onError?.(error);
+    try {
+      options.onError?.(error);
+    } catch {
+      /* Diagnostics cannot interrupt the host. */
+    }
   };
 
   const detach = (): void => {
@@ -137,6 +142,13 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       const windowInfo = safely(() => options.runtime.getWindowInfo?.()) || {};
       const account = safely(() => options.runtime.getAccountInfoSync?.());
       const appBase = safely(() => options.runtime.getAppBaseInfo?.());
+      const device = safely(() => options.runtime.getDeviceInfo?.());
+      const system = device?.system?.match(/^([a-zA-Z][a-zA-Z ]*?)\s*([\d.]+)$/);
+      const os = system
+        ? { name: system[1]?.trim(), version: system[2] }
+        : device?.system
+          ? { name: device.system }
+          : undefined;
       const href = sanitizeUrl(options.href?.(route) || `${SYNTHETIC_ORIGIN}/${route}`);
       const context: TaroReplayContext = {
         route,
@@ -149,6 +161,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         {
           ...(clientOptions?.environment ? { environment: clientOptions.environment } : {}),
           ...(clientOptions?.release ? { release: clientOptions.release } : {}),
+          ...(clientOptions?.dist ? { dist: clientOptions.dist } : {}),
           sdk: {
             name: options.sdk.SDK_NAME || 'sentry.javascript.miniapp',
             version: options.sdk.SDK_VERSION || 'unknown',
@@ -167,6 +180,31 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
             ...(appBase?.SDKVersion ? { 'miniapp.base_library': appBase.SDKVersion } : {}),
           },
           contexts: {
+            ...(device
+              ? {
+                  device: {
+                    type: 'device',
+                    ...(device.brand ? { brand: device.brand } : {}),
+                    ...(device.model ? { model: device.model } : {}),
+                    ...(appBase?.language ? { language: appBase.language } : {}),
+                    ...(windowInfo.screenWidth && windowInfo.screenHeight
+                      ? {
+                          screen_resolution: `${windowInfo.screenWidth}x${windowInfo.screenHeight}`,
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(os ? { os: { type: 'os', ...os } } : {}),
+            ...(platform === 'wechat'
+              ? {
+                  browser: {
+                    type: 'browser',
+                    name: 'WeChat',
+                    ...(appBase?.version ? { version: appBase.version } : {}),
+                  },
+                }
+              : {}),
             miniapp: {
               type: 'miniapp',
               platform,
@@ -196,7 +234,17 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         ...(stylesheet === undefined ? {} : { stylesheet }),
         ...(staticImageSources === undefined ? {} : { staticImageSources }),
         maskAllText: options.privacy?.maskAllText !== false,
-        maskInputValues: options.privacy?.maskInputValues !== false,
+        maskInputValues:
+          (options.privacy?.maskAllInputs ?? options.privacy?.maskInputValues) !== false,
+        ...(options.privacy?.maskAllInputs === undefined
+          ? {}
+          : { maskAllInputs: options.privacy.maskAllInputs }),
+        ...(options.privacy?.blockAllMedia === undefined
+          ? {}
+          : { blockAllMedia: options.privacy.blockAllMedia }),
+        ...(options.privacy?.maskAttributes
+          ? { maskAttributes: options.privacy.maskAttributes }
+          : {}),
         ...(options.replayId ? { replayId: options.replayId } : {}),
         ...options.limits,
         metadata,
@@ -230,6 +278,8 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       else controller.addBreadcrumb(navigation);
       return true;
     } catch (error) {
+      detach();
+      controller?.stop('startup-error');
       reportError(error);
       return false;
     }
@@ -246,10 +296,27 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
   const getController = (): TaroReplayControllerView | undefined => {
     if (!controller) return undefined;
     return {
+      addBreadcrumb: (breadcrumb) =>
+        controller!.addBreadcrumb(
+          sanitizeBreadcrumb(breadcrumb, { maskMessage: options.privacy?.maskAllText !== false }),
+        ),
       get replayId() {
         return controller?.getCapture().replayId || lastCapture?.replayId || '';
       },
       getCapture: () => controller?.getCapture() || lastCapture!,
+      ...(controller.takeSegment ? { takeSegment: () => controller!.takeSegment!() } : {}),
+      ...(controller.recordPageScroll
+        ? {
+            recordPageScroll: (position: { scrollTop?: number; scrollLeft?: number }) =>
+              controller!.recordPageScroll!(position),
+          }
+        : {}),
+      ...(controller.recordViewport
+        ? {
+            recordViewport: (size: { width: number; height: number }) =>
+              controller!.recordViewport!(size),
+          }
+        : {}),
     };
   };
 

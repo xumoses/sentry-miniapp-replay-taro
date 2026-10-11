@@ -139,4 +139,94 @@ describe('installTaroReplayPageLifecycle', () => {
     expect(() => nextTicks.shift()?.()).not.toThrow();
     expect(page.onHide.call(pageInstance)).toBe(expected);
   });
+  test('forwards visible-page scroll/resize and ignores stale-page cleanup', () => {
+    const bridge = {
+      attachRoot: vi.fn(() => true),
+      detachRoot: vi.fn(),
+      flush: vi.fn(() => Promise.resolve()),
+      refreshEnabled: vi.fn(() => true),
+      getSnapshot: vi.fn(() => ({ state: 'buffer' as const, eventCount: 0, approximateBytes: 0 })),
+      subscribe: vi.fn(() => () => undefined),
+      recordPageScroll: vi.fn(),
+      recordViewport: vi.fn(),
+    };
+    installTaroReplayPageLifecycle({ bridge });
+    const page = {
+      onReady: vi.fn(),
+      onShow: vi.fn(),
+      onHide: vi.fn(),
+      onUnload: vi.fn(),
+      onPageScroll: vi.fn(),
+      onResize: vi.fn(),
+    };
+    (tap.mock.calls[0]![1] as (config: typeof page) => void)(page);
+    const first = { route: 'first' };
+    const second = { route: 'second' };
+    page.onReady.call(first);
+    nextTicks.shift()?.();
+    page.onPageScroll.call(first, { scrollTop: 123 });
+    page.onResize.call(first, { size: { windowWidth: 844, windowHeight: 390 } });
+    expect(bridge.recordPageScroll).toHaveBeenCalledWith({ scrollTop: 123 });
+    expect(bridge.recordViewport).toHaveBeenCalledWith({ width: 844, height: 390 });
+    page.onReady.call(second);
+    nextTicks.shift()?.();
+    page.onUnload.call(first);
+    expect(bridge.detachRoot).not.toHaveBeenCalled();
+    page.onPageScroll.call(first, { scrollTop: 456 });
+    expect(bridge.recordPageScroll).toHaveBeenCalledTimes(1);
+    page.onHide.call(second);
+    expect(bridge.detachRoot).toHaveBeenCalledTimes(1);
+  });
+
+  test('a late ready callback cannot record an already hidden page', () => {
+    const bridge = {
+      attachRoot: vi.fn(() => true),
+      detachRoot: vi.fn(),
+      flush: vi.fn(() => Promise.resolve()),
+      refreshEnabled: vi.fn(() => true),
+      getSnapshot: vi.fn(() => ({ state: 'buffer' as const, eventCount: 0, approximateBytes: 0 })),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    installTaroReplayPageLifecycle({ bridge });
+    const page = { onReady: vi.fn(), onShow: vi.fn(), onHide: vi.fn() };
+    (tap.mock.calls[0]![1] as (config: typeof page) => void)(page);
+    const instance = { route: 'hidden' };
+    page.onShow.call(instance);
+    page.onHide.call(instance);
+    page.onReady.call(instance);
+    for (const callback of nextTicks.splice(0)) callback();
+    expect(bridge.attachRoot).not.toHaveBeenCalled();
+    page.onShow.call(instance);
+    nextTicks.shift()?.();
+    expect(bridge.attachRoot).toHaveBeenCalledTimes(1);
+  });
+
+  test('failed root attachment can retry on show and cleanup survives an original hook throw', () => {
+    const bridge = {
+      attachRoot: vi.fn().mockReturnValueOnce(false).mockReturnValue(true),
+      detachRoot: vi.fn(),
+      flush: vi.fn(() => Promise.resolve()),
+      refreshEnabled: vi.fn(() => true),
+      getSnapshot: vi.fn(() => ({ state: 'buffer' as const, eventCount: 0, approximateBytes: 0 })),
+      subscribe: vi.fn(() => () => undefined),
+    };
+    installTaroReplayPageLifecycle({ bridge });
+    const failure = new Error('application lifecycle error');
+    const page = {
+      onReady: vi.fn(),
+      onShow: vi.fn(),
+      onHide: vi.fn(() => {
+        throw failure;
+      }),
+    };
+    (tap.mock.calls[0]![1] as (config: typeof page) => void)(page);
+    const instance = { route: 'retry' };
+    page.onReady.call(instance);
+    nextTicks.shift()?.();
+    page.onShow.call(instance);
+    nextTicks.shift()?.();
+    expect(bridge.attachRoot).toHaveBeenCalledTimes(2);
+    expect(() => page.onHide.call(instance)).toThrow(failure);
+    expect(bridge.detachRoot).toHaveBeenCalledTimes(1);
+  });
 });

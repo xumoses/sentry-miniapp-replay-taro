@@ -11,14 +11,16 @@
 ## 生产化第一阶段
 
 - Taro `4.2.x`、React 18、微信小程序开发者工具；
-- 全局 `ReplayCoordinator` 做一次稳定采样决定，并跨页面保持 replay id；
-- 普通完整会话采样和错误前 30 秒有界滚动 buffer；
-- 只有当前可见 Taro 页面中真正通过 SDK `beforeSend` 与错误采样的异常才会提升
-  buffer；原生页和后台异常不会误关联此前的 Taro buffer；
+- 全局 `ReplayCoordinator` 对 session 采样一次；error 采样率大于 0 即持续缓冲，
+  每个可接受异常独立采样，未命中不会终止后续错误机会；
+- 连续会话默认每 5 秒分段，错误前 30 秒有界滚动 buffer；分段保留 observer
+  与节点 ID（需要支持 `takeSegment` 的 SDK），导航维持同一 Replay；
+- 异常自动提升仅接受当前可见 Taro 页面中真正通过 SDK `beforeSend` 与错误采样的
+  异常；原生页和后台异常不会误关联此前的 Taro buffer；
 - 首个错误沿用同一 `replay_id` 提升为 session，后续错误与递增 segment 继续归入
   同一个 Replay，达到会话上限后重新进入 error buffer；
 - Taro 页面只 attach/detach root，不导入第二份 sentry-miniapp；
-- 可注入社区版 `sentry-miniapp` 或内部重命名包 `@xumoses/sentry-miniapp` 的 SDK
+- 可注入社区版 `sentry-miniapp` 或 scoped fork `@xumoses/sentry-miniapp` 的 SDK
   namespace。
 
 暂不支持原生小程序 DOM、Vue/uni-app、小游戏、Canvas、WebView、原生组件内部节点、
@@ -86,11 +88,12 @@ CSS，并提供 `getReplayStyles(route)`。参数是已去除 query/hash 的页�
 快照，并按录制窗口宽度换算 `rpx`。本地候选的样式注入最低版本为
 `@xumoses/sentry-miniapp@1.13.1-beta.5`；旧版 SDK 会忽略该选项。
 
-本版可通过可选的 `getReplayImageSources(route)` 提供同一路由引用的可信静态 raster
+本版可通过可选的 `getReplayImageSources(route)` 提供同一路由引用的可信静态图片
 图片映射；图片录制需要 `@xumoses/sentry-miniapp@1.13.1-beta.6`。宿主构建生成
 `replayImages.generated`，以静态资源路径为精确 key、以经过大小限制的 PNG/JPEG/GIF/
-WebP data URI 为值；适配层将映射作为 `staticImageSources` 传给 SDK。不要加入 SVG、
-远程 URL 或运行时用户图片；该映射不会放开任意 data URI，也不会改变隐私遮罩规则。
+WebP data URI 为值；适配层将映射作为 `staticImageSources` 传给 SDK。候选 SDK 也支持
+经严格安全审计的静态 SVG；依赖匹配版本发布后再启用。不要加入远程 URL、运行时用户
+图片或未审计 SVG；该映射不会放开任意 data URI，也不会改变隐私遮罩规则。
 读取失败或未提供映射时安全跳过；小程序本地图片路径仍可能无法在浏览器还原。
 
 未提供样式、返回 `undefined` 或读取样式失败时仍可录制结构和内联样式，但外部样式
@@ -127,7 +130,11 @@ hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 
 - `maskInputValues: true`：输入值不进入 capture；
 - `allowUser: false`：自定义 metadata 中的 user 被丢弃；
 - breadcrumb 的敏感字段会过滤，URL 会去除 query、hash 和 userinfo；
-- recorder 设有时长、事件数和字节数上限。
+- `maskAllInputs` 是 `maskInputValues` 的优先别名；`blockAllMedia: true` 默认屏蔽
+  媒体，宿主明确提供的可信静态图片映射是有限例外；
+- `maskAttributes` 替换默认属性列表 `title` / `placeholder` / `aria-label`；
+  如需追加遮罩，请在自定义列表中同时保留这三个默认属性；
+- recorder 设有时长、事件、字节和单批 mutation 上限。
 
 只有页面内的所有内容都已确认是合成测试数据时，才可以显式设置
 `privacy.maskAllText: false`。不要在真实用户页面复制示例中的关闭选项。
@@ -138,9 +145,23 @@ hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 
 transport、限流、离线队列和用户授权路径。适配层不会自行解析 DSN，也不会从小程序
 直接对 Sentry 发起一条旁路 `fetch` 请求。
 
-buffer 模式无异常时绝不发送；异常提升自动发送。手动 flush 只用于 full-session
-诊断。远程或本地 kill switch 可通过 integration 的 `enabled` boolean/函数接入，
-disabled 状态不会创建 observer 或发送 envelope。
+buffer 模式仅在已接受异常通过 Replay 采样、显式 `sendBufferedReplay()`，或用户反馈
+明确设置 `includeReplay: true` 时发送；普通 `flush()` 在 buffer 中无副作用。
+`flush()` 在 session 中发送当前段并继续录制。反馈关联使用官方
+`contexts.feedback.replay_id`，不会进入异常的 `error_ids`；事务关联携带 Replay
+context 和 `tags.replayId`，其 trace/页面名进入 Replay 的 `trace_ids`/`segment_names`。
+
+远程或本地 kill switch 可通过 `enabled` boolean/函数接入；调用
+`refreshEnabled()` 会立即检查并清理 observer、计时器及尚未交付的队列。
+`bridge.reset()` 用于退出登录或身份切换：丢弃当前录制，等待下一可见页面 attach，
+避免拍下旧身份页面。`stop()` 显式停止，`start()` / `startBuffering()` 手动启动；
+`destroy()` 或 integration `cleanup()` 永久清理实例。不要同时安装全局生命周期和页面 hook。
+
+队列默认至多 4 段 / 2 MiB；明确抛出的发送失败最多重试两次，HTTP 错误不盲目重发。
+`getSnapshot().delivery` 区分 2xx `accepted`、SDK 未提供结果的 `handed-off`、
+`rejected` 和 `cancelled`；`recording` 表示真实活动 recorder。已经交给宿主 transport
+的请求或离线队列不能由 adapter 撤回。完整能力、默认限额与限制见
+[官方能力对照](./docs/official-alignment.md) 和 [生命周期约定](./docs/production-phase-one.md)。
 
 ## 本地 capture 查看器
 

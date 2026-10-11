@@ -10,6 +10,8 @@ type PageLifecycleConfig = Record<string, unknown> & {
   onShow?: PageLifecycle;
   onHide?: PageLifecycle;
   onUnload?: PageLifecycle;
+  onPageScroll?: PageLifecycle;
+  onResize?: PageLifecycle;
 };
 type TaroPageInstance = {
   $taroPath?: string;
@@ -20,6 +22,7 @@ type TaroPageInstance = {
 const installedBridges = new WeakSet<object>();
 const readyPages = new WeakSet<object>();
 const visiblePages = new WeakSet<object>();
+const hiddenPages = new WeakSet<object>();
 const attachedPages = new WeakSet<object>();
 const scheduledPages = new WeakSet<object>();
 
@@ -39,6 +42,7 @@ function createRuntime(
     getEnv?(): string;
     getAccountInfoSync?(): ReturnType<NonNullable<TaroReplayRuntime['getAccountInfoSync']>>;
     getAppBaseInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getAppBaseInfo']>>;
+    getDeviceInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getDeviceInfo']>>;
     nextTick?(callback: () => void): void;
   };
   const pageInstance = isObject(page) ? (page as TaroPageInstance) : undefined;
@@ -61,21 +65,24 @@ function createRuntime(
     getEnv: () => taro.getEnv?.() || 'unknown',
     getAccountInfoSync: () => taro.getAccountInfoSync?.() || {},
     getAppBaseInfo: () => taro.getAppBaseInfo?.() || {},
+    getDeviceInfo: () => taro.getDeviceInfo?.() || {},
   };
 }
 
 function wrapLifecycle(
   original: PageLifecycle | undefined,
-  replayLifecycle: (page: unknown) => void,
+  replayLifecycle: (page: unknown, args: unknown[]) => void,
 ): PageLifecycle {
   return function wrappedLifecycle(this: unknown, ...args: unknown[]): unknown {
-    const result = original?.apply(this, args);
     try {
-      replayLifecycle(this);
-    } catch {
-      // Replay is diagnostic-only and must never alter Taro page navigation.
+      return original?.apply(this, args);
+    } finally {
+      try {
+        replayLifecycle(this, args);
+      } catch {
+        // Replay is diagnostic-only and must never alter Taro page navigation.
+      }
     }
-    return result;
   };
 }
 
@@ -91,6 +98,7 @@ export function installTaroReplayPageLifecycle({
 }): void {
   if (!bridge || installedBridges.has(bridge)) return;
   installedBridges.add(bridge);
+  let activePage: unknown;
 
   hooks.tap('modifyPageObject', (pageConfig: PageLifecycleConfig) => {
     const scheduleAttach = (page: unknown) => {
@@ -110,9 +118,11 @@ export function installTaroReplayPageLifecycle({
       const attach = () => {
         scheduledPages.delete(page);
         if (!visiblePages.has(page) || attachedPages.has(page)) return;
-        attachedPages.add(page);
         try {
-          bridge.attachRoot(createRuntime(page, getReplayStyles, getReplayImageSources));
+          if (bridge.attachRoot(createRuntime(page, getReplayStyles, getReplayImageSources))) {
+            attachedPages.add(page);
+            activePage = page;
+          }
         } catch {
           // Replay is diagnostic-only and must never alter Taro page navigation.
         }
@@ -122,29 +132,50 @@ export function installTaroReplayPageLifecycle({
       else setTimeout(attach, 0);
     };
     const show = (page: unknown) => {
-      if (isObject(page)) visiblePages.add(page);
+      if (isObject(page)) {
+        hiddenPages.delete(page);
+        visiblePages.add(page);
+      }
       scheduleAttach(page);
     };
     const ready = (page: unknown) => {
       if (isObject(page)) {
         readyPages.add(page);
-        visiblePages.add(page);
+        if (!hiddenPages.has(page)) visiblePages.add(page);
       }
       scheduleAttach(page);
     };
     const detach = (page: unknown, unload = false) => {
       if (isObject(page)) {
         visiblePages.delete(page);
+        hiddenPages.add(page);
         scheduledPages.delete(page);
         if (unload) readyPages.delete(page);
         if (!attachedPages.delete(page)) return;
       }
+      if (activePage !== page) return;
+      activePage = undefined;
       bridge.detachRoot();
     };
     pageConfig.onReady = wrapLifecycle(pageConfig.onReady, ready);
     pageConfig.onShow = wrapLifecycle(pageConfig.onShow, show);
-    pageConfig.onHide = wrapLifecycle(pageConfig.onHide, detach);
+    pageConfig.onHide = wrapLifecycle(pageConfig.onHide, (page) => detach(page));
     pageConfig.onUnload = wrapLifecycle(pageConfig.onUnload, (page) => detach(page, true));
+    pageConfig.onPageScroll = wrapLifecycle(pageConfig.onPageScroll, (page, args) => {
+      if (activePage !== page || !isObject(page) || !visiblePages.has(page)) return;
+      const event = args[0] as { scrollTop?: number; scrollLeft?: number } | undefined;
+      if (event) bridge.recordPageScroll?.(event);
+    });
+    pageConfig.onResize = wrapLifecycle(pageConfig.onResize, (page, args) => {
+      if (activePage !== page || !isObject(page) || !visiblePages.has(page)) return;
+      const event = args[0] as
+        | { size?: { windowWidth?: number; windowHeight?: number } }
+        | undefined;
+      const width = event?.size?.windowWidth;
+      const height = event?.size?.windowHeight;
+      if (typeof width === 'number' && typeof height === 'number')
+        bridge.recordViewport?.({ width, height });
+    });
   });
 }
 

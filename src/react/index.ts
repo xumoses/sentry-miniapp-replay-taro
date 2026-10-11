@@ -1,5 +1,5 @@
 import { document, MutationObserver } from '@tarojs/runtime';
-import Taro, { useDidHide, useDidShow, useReady, useUnload } from '@tarojs/taro';
+import Taro, { useDidHide, useReady, useUnload } from '@tarojs/taro';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { createTaroReplay } from '../createTaroReplay';
@@ -11,7 +11,6 @@ import type {
   UseTaroReplayOptions,
   UseTaroReplayResult,
 } from '../types';
-import type { ReplayCoordinatorSnapshot, TaroReplayBridge } from '../coordinator/types';
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
@@ -25,6 +24,7 @@ function createRuntime(): TaroReplayRuntime {
     getEnv?(): string;
     getAccountInfoSync?(): ReturnType<NonNullable<TaroReplayRuntime['getAccountInfoSync']>>;
     getAppBaseInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getAppBaseInfo']>>;
+    getDeviceInfo?(): ReturnType<NonNullable<TaroReplayRuntime['getDeviceInfo']>>;
   };
 
   return {
@@ -35,12 +35,14 @@ function createRuntime(): TaroReplayRuntime {
     getEnv: () => taro.getEnv?.() || 'unknown',
     getAccountInfoSync: () => taro.getAccountInfoSync?.() || {},
     getAppBaseInfo: () => taro.getAppBaseInfo?.() || {},
+    getDeviceInfo: () => taro.getDeviceInfo?.() || {},
   };
 }
 
 /**
  * Starts after Taro mounts the page root (`useReady`) and stops synchronously
- * during `useUnload`. Keep the returned object in the page that owns the root.
+ * during hide/unload. This low-level one-shot API does not resume; use the root
+ * bridge or lifecycle adapter for continuous sessions.
  */
 export function useTaroReplay(options: UseTaroReplayOptions): UseTaroReplayResult {
   const [state, setState] = useState<TaroReplayState>('idle');
@@ -90,6 +92,7 @@ export function useTaroReplay(options: UseTaroReplayOptions): UseTaroReplayResul
   }, []);
 
   useReady(start);
+  useDidHide(dispose);
   useUnload(dispose);
   useEffect(() => dispose, [dispose]);
 
@@ -99,43 +102,8 @@ export function useTaroReplay(options: UseTaroReplayOptions): UseTaroReplayResul
   );
 }
 
-export interface UseTaroReplayRootOptions {
-  bridge?: TaroReplayBridge;
-}
-
-/**
- * Attaches only the Taro virtual-DOM root to the process-wide native
- * coordinator. It does not import or initialize a Sentry SDK.
- */
-export function useTaroReplaySnapshot({
-  bridge,
-}: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
-  const [snapshot, setSnapshot] = useState<ReplayCoordinatorSnapshot>(
-    () =>
-      bridge?.getSnapshot() || {
-        state: 'disabled',
-        eventCount: 0,
-        approximateBytes: 0,
-      },
-  );
-
-  useEffect(() => {
-    if (!bridge) return;
-    return bridge.subscribe(setSnapshot);
-  }, [bridge]);
-  return snapshot;
-}
-
-export function useTaroReplayRoot(options: UseTaroReplayRootOptions): ReplayCoordinatorSnapshot {
-  const { bridge } = options;
-  const snapshot = useTaroReplaySnapshot(options);
-  useReady(() => bridge?.attachRoot(createRuntime()));
-  useDidShow(() => bridge?.attachRoot(createRuntime()));
-  useDidHide(() => bridge?.detachRoot());
-  useUnload(() => bridge?.detachRoot());
-  useEffect(() => () => bridge?.detachRoot(), [bridge]);
-  return snapshot;
-}
+export { useTaroReplayRoot, useTaroReplaySnapshot } from './root';
+export type { UseTaroReplayRootOptions } from './root';
 
 export type { UseTaroReplayOptions, UseTaroReplayResult } from '../types';
 export type { ReplayCoordinatorSnapshot, TaroReplayBridge } from '../coordinator/types';

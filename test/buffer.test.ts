@@ -11,7 +11,7 @@ const event = (type: number, timestamp: number, value: string): TaroReplayEvent 
 });
 
 describe('Replay rolling buffer', () => {
-  test('evicts by time while retaining the newest playable checkpoint', () => {
+  test('evicts old increments while retaining the baseline for recent navigation', () => {
     const events = [
       event(4, 0, 'old-meta'),
       event(2, 1, 'old-full'),
@@ -28,10 +28,10 @@ describe('Replay rolling buffer', () => {
         maxEvents: 10,
         maxBytes: 10_000,
       }),
-    ).toEqual([events[3], events[4], events[5]]);
+    ).toEqual([events[0], events[1], events[3], events[4], events[5]]);
   });
 
-  test('drops old-root mutations that cannot follow the newest root snapshot', () => {
+  test('retains recent navigation and its preceding playable root', () => {
     const newMeta = event(4, 90, 'new-meta');
     const newFull = event(2, 91, 'new-full');
     const newMutation = event(3, 92, 'new-mutation');
@@ -47,7 +47,14 @@ describe('Replay rolling buffer', () => {
         ],
         { now: 100, windowMs: 30, maxEvents: 20, maxBytes: 10_000 },
       ),
-    ).toEqual([newMeta, newFull, newMutation]);
+    ).toEqual([
+      event(4, 70, 'old-meta'),
+      event(2, 71, 'old-full'),
+      event(3, 89, 'old-root-mutation'),
+      newMeta,
+      newFull,
+      newMutation,
+    ]);
   });
 
   test('rolls by UTF-8 bytes and event count instead of stopping', () => {

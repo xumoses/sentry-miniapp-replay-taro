@@ -32,15 +32,25 @@ export function serializeDsn(dsn: DsnComponents): string {
   return `${dsn.protocol}://${auth}${dsn.host}${port}${path}/${dsn.projectId}`;
 }
 
+export interface ReplayEnvelopeOptions {
+  dsn?: string;
+  sdk?: SdkInfo;
+  errorIds?: string[];
+  traceIds?: string[];
+  segmentNames?: string[];
+  replayType?: 'session' | 'buffer';
+  segmentId?: number;
+  replayStartTimestamp?: number;
+}
+
+export interface ReplaySendResult {
+  status: 'accepted' | 'handed-off' | 'rejected';
+  statusCode?: number;
+}
+
 export function createReplayEnvelope(
   capture: TaroReplayCapture,
-  options: {
-    dsn?: string;
-    sdk?: SdkInfo;
-    errorIds?: string[];
-    replayType?: 'session' | 'buffer';
-    segmentId?: number;
-  } = {},
+  options: ReplayEnvelopeOptions = {},
 ): ReplayEnvelope {
   const endedAt = capture.endedAt ?? capture.startedAt;
   const metadata = capture.metadata || {};
@@ -51,17 +61,18 @@ export function createReplayEnvelope(
     type: 'replay_event',
     timestamp: endedAt / 1_000,
     start_timestamp: capture.startedAt / 1_000,
-    replay_start_timestamp: capture.startedAt / 1_000,
+    replay_start_timestamp: (options.replayStartTimestamp ?? capture.startedAt) / 1_000,
     replay_id: capture.replayId,
     segment_id: options.segmentId || 0,
     replay_type: options.replayType || 'session',
     platform: 'javascript',
     urls: [capture.href],
     error_ids: options.errorIds || [],
-    trace_ids: [],
-    segment_names: [],
+    trace_ids: options.traceIds || [],
+    segment_names: options.segmentNames || [],
     ...(metadata.environment ? { environment: metadata.environment } : {}),
     ...(metadata.release ? { release: metadata.release } : {}),
+    ...(metadata.dist ? { dist: metadata.dist } : {}),
     ...(metadata.sdk ? { sdk: metadata.sdk } : {}),
     ...(metadata.user ? { user: metadata.user } : {}),
     ...(metadata.tags ? { tags: metadata.tags } : {}),
@@ -86,12 +97,8 @@ export function createReplayEnvelope(
 export async function sendReplayCapture(
   client: SentryReplayClient,
   capture: TaroReplayCapture,
-  options: {
-    errorIds?: string[];
-    replayType?: 'session' | 'buffer';
-    segmentId?: number;
-  } = {},
-): Promise<void> {
+  options: ReplayEnvelopeOptions = {},
+): Promise<ReplaySendResult> {
   const dsnComponents = client.getDsn?.();
   const dsn = dsnComponents ? serializeDsn(dsnComponents) : undefined;
   const envelope = createReplayEnvelope(capture, {
@@ -99,5 +106,15 @@ export async function sendReplayCapture(
     ...(capture.metadata?.sdk ? { sdk: capture.metadata.sdk } : {}),
     ...options,
   });
-  await Promise.resolve(client.sendEnvelope(envelope));
+  const response = await Promise.resolve(client.sendEnvelope(envelope));
+  const statusCode =
+    response &&
+    typeof response === 'object' &&
+    'statusCode' in response &&
+    typeof response.statusCode === 'number'
+      ? response.statusCode
+      : undefined;
+  // Core catches transport rejections and offline queues may return {}. Neither is an ingestion acknowledgment.
+  if (statusCode === undefined || statusCode === 0) return { status: 'handed-off' };
+  return { status: statusCode >= 200 && statusCode < 300 ? 'accepted' : 'rejected', statusCode };
 }

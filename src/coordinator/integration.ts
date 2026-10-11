@@ -19,6 +19,7 @@ export interface TaroReplayIntegrationOptions extends Omit<
 
 export interface TaroReplayIntegration extends Integration {
   readonly bridge: TaroReplayBridge;
+  cleanup(): void;
 }
 
 export function taroReplayIntegration(
@@ -38,6 +39,15 @@ export function taroReplayIntegration(
   const bridge: TaroReplayBridge = {
     attachRoot: (runtime) => coordinator?.attachRoot(runtime) === true,
     detachRoot: () => coordinator?.detachRoot(),
+    start: () => coordinator?.start() === true,
+    startBuffering: () => coordinator?.startBuffering() === true,
+    stop: (options) => coordinator?.stop(options) || Promise.resolve(),
+    reset: () => coordinator?.reset(),
+    destroy: () => coordinator?.destroy(),
+    getReplayId: () => coordinator?.getReplayId(),
+    sendBufferedReplay: () => coordinator?.sendBufferedReplay() || Promise.resolve(),
+    recordPageScroll: (position) => coordinator?.recordPageScroll(position),
+    recordViewport: (size) => coordinator?.recordViewport(size),
     flush: () => coordinator?.flush() || Promise.resolve(),
     refreshEnabled: () => coordinator?.refreshEnabled() === true,
     getSnapshot: () => coordinator?.getSnapshot() || unavailable(),
@@ -57,6 +67,10 @@ export function taroReplayIntegration(
   return {
     name: 'TaroReplay',
     bridge,
+    cleanup() {
+      coordinator?.destroy();
+      coordinator = undefined;
+    },
     setup(client) {
       const clientOptions = client.getOptions() as {
         replaysSessionSampleRate?: number;
@@ -65,6 +79,9 @@ export function taroReplayIntegration(
       const sessionRate =
         options.replaysSessionSampleRate ?? clientOptions.replaysSessionSampleRate;
       const errorRate = options.replaysOnErrorSampleRate ?? clientOptions.replaysOnErrorSampleRate;
+      coordinator?.destroy();
+      for (const detach of coordinatorSubscriptions.values()) detach();
+      coordinatorSubscriptions.clear();
       coordinator = new ReplayCoordinator({
         ...options,
         client: client as SentryReplayClient,

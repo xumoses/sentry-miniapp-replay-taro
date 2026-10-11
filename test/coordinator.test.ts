@@ -5,7 +5,7 @@ import { ReplayCoordinator } from '../src/coordinator/ReplayCoordinator';
 import { makeCapture, makeRuntime, makeSdk } from './fixtures';
 
 describe('ReplayCoordinator', () => {
-  test('uses strict sampling boundaries', () => {
+  test('a missed session sample still buffers when error sampling is enabled', () => {
     const fixture = makeSdk();
     const random = vi.fn(() => 0.5);
     const coordinator = new ReplayCoordinator({
@@ -16,8 +16,9 @@ describe('ReplayCoordinator', () => {
       random,
     });
 
-    expect(coordinator.getSnapshot().state).toBe('disabled');
-    expect(random).toHaveBeenCalledTimes(2);
+    expect(coordinator.getSnapshot().state).toBe('buffer');
+    expect(random).toHaveBeenCalledTimes(33);
+    coordinator.destroy();
   });
 
   test('makes one stable prioritized sampling decision', () => {
@@ -35,7 +36,7 @@ describe('ReplayCoordinator', () => {
     coordinator.attachRoot(makeRuntime());
     coordinator.detachRoot();
     coordinator.attachRoot(makeRuntime());
-    expect(random).toHaveBeenCalledTimes(34);
+    expect(random).toHaveBeenCalledTimes(33);
     expect(coordinator.getSnapshot().replayId).toMatch(/^[0-9a-f]{32}$/);
   });
 

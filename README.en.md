@@ -1,11 +1,11 @@
 # @xumoses/sentry-miniapp-replay-taro
 
-Phase one now provides a process-wide `ReplayCoordinator`: stable session/error
-sampling, a bounded 30-second error buffer, promotion only from accepted Sentry
-exception events, `replay_id`/`error_ids` correlation, a runtime kill switch,
-and a bridge-only `useTaroReplayRoot` hook so Taro does not bundle another
-`@xumoses/sentry-miniapp`. See `docs/production-phase-one.md` for the public
-interface and invariants.
+The process-wide `ReplayCoordinator` samples sessions once and keeps an error
+buffer whenever the error rate is positive. Each accepted error is sampled
+independently; a miss keeps buffering. Visible Taro pages share a Replay ID,
+with bounded five-second session segments and a rolling 30-second error buffer.
+See [the capability matrix](./docs/official-alignment.md) and
+[lifecycle contract](./docs/production-phase-one.md).
 
 An experimental Taro React Session Replay adapter for `sentry-miniapp`. It
 captures snapshots and mutations from Taro's virtual DOM and turns the capture
@@ -22,13 +22,13 @@ into a Sentry Replay envelope.
 - Taro `4.2.x`, React 18, and the WeChat Mini Program developer tools;
 - an initial snapshot, DOM mutations, and Sentry breadcrumbs for one Taro page
   root;
-- one Replay segment sent after a manual stop or duration limit;
+- continuous multi-page sessions, incremental segments, error buffering, accepted
+  error/transaction correlation, and explicit feedback Replay inclusion;
 - an injected SDK namespace from either the community `sentry-miniapp` package
-  or the internally renamed `@xumoses/sentry-miniapp` package.
+  or the scoped fork `@xumoses/sentry-miniapp` package.
 
 It does not currently support native Mini Program DOM, Vue/uni-app, mini games,
-Canvas, WebView, nodes inside native components, continuous multi-page
-sessions, multiple segments, pre-error buffering, full offline rrweb playback,
+Canvas, WebView, nodes inside native components, full offline rrweb playback,
 or every event type offered by browser Session Replay. Other Mini Program
 platforms and Taro versions have not been systematically validated.
 
@@ -38,39 +38,33 @@ platforms and Taro versions have not been systematically validated.
 pnpm add @xumoses/sentry-miniapp-replay-taro@beta
 ```
 
-The host application must also install Taro, React, `@sentry/core`, and one of
-these SDK namespaces:
+The native host installs one supported SDK namespace and initializes it once.
+Taro pages receive its Replay bridge; they must not initialize another client.
+The adapter uses `@sentry/core` only for development types and tests.
 
 ```sh
-pnpm add sentry-miniapp
-# or
 pnpm add @xumoses/sentry-miniapp@beta
 ```
 
 ## React usage
 
-Initialize the SDK as usual, then inject its complete namespace into the hook.
-The adapter does not hard-code the host package name, so the same integration
-works with the community and renamed packages.
+Initialize the integration in the native host, then expose `replay.bridge`:
 
-```tsx
-import { Button, View } from '@tarojs/components';
-import * as Sentry from 'sentry-miniapp';
-import { useTaroReplay } from '@xumoses/sentry-miniapp-replay-taro/react';
-
-export default function CheckoutPage() {
-  const replay = useTaroReplay({
-    sdk: Sentry,
-    limits: { maxDurationMs: 30_000 },
-  });
-
-  return (
-    <View>
-      <Button onClick={() => void replay.stop('manual')}>Stop and send Replay</Button>
-    </View>
-  );
-}
+```ts
+import * as Sentry from '@xumoses/sentry-miniapp';
+import { taroReplayIntegration } from '@xumoses/sentry-miniapp-replay-taro';
+const replay = taroReplayIntegration({ sdk: Sentry });
+Sentry.init({
+  replaysSessionSampleRate: 0.01,
+  replaysOnErrorSampleRate: 1,
+  integrations: [...Sentry.getDefaultIntegrations(), replay],
+});
 ```
+
+For individual page integration, use the bridge-only `useTaroReplayRoot` from
+`@xumoses/sentry-miniapp-replay-taro/react/root`. Install either the global
+lifecycle adapter or page hooks, not both. The older `useTaroReplay` hook is a
+one-shot capture tool; it stops on hide/unload and does not resume a session.
 
 For app-wide coverage, install the lifecycle adapter once from
 `@xumoses/sentry-miniapp-replay-taro/taro/lifecycle`. It attaches every Taro
@@ -103,11 +97,12 @@ using the recorded viewport width. The local candidate introducing this support
 is `@xumoses/sentry-miniapp@1.13.1-beta.5`; older SDKs ignore the option.
 
 This release also accepts optional `getReplayImageSources(route)` for trusted
-static raster images referenced by that route. Image recording requires
+static images referenced by that route. Image recording requires
 `@xumoses/sentry-miniapp@1.13.1-beta.6`. The host build owns
 `replayImages.generated`: exact static resource paths map to size-bounded
-PNG/JPEG/GIF/WebP data URIs, forwarded as `staticImageSources` to the SDK. Exclude
-SVG, remote URLs, and runtime user images. The map does not permit arbitrary data
+PNG/JPEG/GIF/WebP data URIs, forwarded as `staticImageSources` to the SDK. The candidate SDK additionally supports strictly audited static SVG; enable it
+only with the matching SDK release. Exclude remote URLs, runtime user images
+and unaudited SVG. The map does not permit arbitrary data
 URIs or change privacy masking. A missing or throwing getter is a safe no-op;
 local mini-program image paths may remain unavailable in browser playback.
 
@@ -133,7 +128,11 @@ images.
 The defaults minimize captured data:
 
 - `maskAllText: true` masks all visible text;
-- `maskInputValues: true` keeps input values out of the capture;
+- `maskAllInputs` (or legacy `maskInputValues`) defaults to masking input values;
+- `blockAllMedia: true` blocks media; explicitly trusted static images remain a
+  bounded exception;
+- `maskAttributes` replaces the default title/placeholder/aria-label list; include
+  these names explicitly when adding custom masked attributes;
 - `allowUser: false` discards user data from custom metadata;
 - sensitive breadcrumb fields are filtered, while URL query strings, fragments,
   and userinfo are removed;
@@ -149,11 +148,23 @@ It therefore follows the host SDK's transport, rate limiting, offline queue,
 and user-consent path. The adapter does not parse the DSN or send a side-channel
 `fetch` request from the Mini Program directly to Sentry.
 
-Manual stops and duration limits send by default. Page unload stops and cleans
-up the recorder without starting an asynchronous network request by default.
-These choices can be adjusted with `sendOnManualStop`, `sendOnDurationStop`, and
-`sendOnDispose`; validate lifecycle behavior on the target platform before
-enabling unload delivery.
+A regular `flush()` does nothing in buffer mode. A sampled accepted exception,
+explicit `sendBufferedReplay()`, or feedback with `includeReplay: true` promotes
+a playable buffer. Feedback uses `contexts.feedback.replay_id` and is never
+counted in `error_ids`. Transactions contribute `trace_ids`/`segment_names` and
+carry Replay context plus `tags.replayId` during session recording.
+
+Call `bridge.reset()` before clearing authentication state: it discards current
+capture and waits for the next visible page attach. `stop()` stops explicitly;
+`start()` and `startBuffering()` start manually. `destroy()` and integration
+`cleanup()` release hooks, observers and timers. Call `refreshEnabled()` when a
+runtime kill switch changes.
+
+Delivery is bounded to four segments / 2 MiB by default. Thrown send failures
+retry twice; explicit HTTP failures do not retry. `getSnapshot().delivery`
+distinguishes accepted 2xx from an unconfirmed SDK handoff, rejection and
+cancellation. `recording` reflects the live recorder, including resource-limit
+pauses. Already handed-off network/offline requests cannot be retracted.
 
 ## Local capture viewer
 

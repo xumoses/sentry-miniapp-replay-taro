@@ -1,3 +1,5 @@
+import type { ReplayDeliveryOptions, ReplayDeliverySnapshot } from './delivery';
+import type { TaroReplayContext, TaroReplayMetadata } from '../types';
 import type { Event } from '@sentry/core';
 
 import type {
@@ -14,7 +16,8 @@ export type ReplayCoordinatorState =
   | 'buffer'
   | 'promoted'
   | 'sent'
-  | 'error';
+  | 'error'
+  | 'stopped';
 
 export interface ReplayCoordinatorSnapshot {
   state: ReplayCoordinatorState;
@@ -24,6 +27,8 @@ export interface ReplayCoordinatorSnapshot {
   eventCount: number;
   approximateBytes: number;
   error?: Error;
+  delivery?: ReplayDeliverySnapshot;
+  recording?: boolean;
 }
 
 export interface ReplayCoordinatorOptions {
@@ -36,12 +41,29 @@ export interface ReplayCoordinatorOptions {
   now?: () => number;
   privacy?: TaroReplayPrivacyOptions;
   limits?: TaroReplayLimitOptions;
+  /** Session segments are drained without replacing observers when supported by the SDK. */
+  flushIntervalMs?: number;
+  delivery?: ReplayDeliveryOptions;
+  beforeErrorSampling?: (event: ReplayAwareEvent) => boolean;
+  getMetadata?: (context: TaroReplayContext) => TaroReplayMetadata | undefined;
+  onError?: (error: Error) => void;
 }
 
 export interface TaroReplayBridge {
   attachRoot(runtime: TaroReplayRuntime): boolean;
   detachRoot(): void;
   flush(): Promise<void>;
+  start?(): boolean;
+  startBuffering?(): boolean;
+  stop?(options?: { flush?: boolean }): Promise<void>;
+  /** Discards the identity boundary and waits for the next visible page attach. */
+  reset?(): void;
+  destroy?(): void;
+  getReplayId?(): string | undefined;
+  /** Explicit operator action; ordinary buffer flush remains a no-op. */
+  sendBufferedReplay?(): Promise<void>;
+  recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): void;
+  recordViewport?(size: { width: number; height: number }): void;
   /** Re-evaluates a runtime kill switch and tears down immediately when disabled. */
   refreshEnabled(): boolean;
   getSnapshot(): ReplayCoordinatorSnapshot;
