@@ -6,6 +6,7 @@ import type {
   TaroReplayCapture,
   TaroReplayHandle,
   TaroReplayLimitOptions,
+  TaroReplayNodeLike,
   TaroReplayRuntime,
 } from '../types';
 import { boundReplayEvents } from './buffer';
@@ -38,6 +39,29 @@ function replayId(random: () => number): string {
   return value;
 }
 
+function currentRoot(runtime: TaroReplayRuntime): TaroReplayNodeLike | undefined {
+  const router = runtime.getCurrentInstance().router;
+  const id = router?.$taroPath || router?.path;
+  return id
+    ? runtime.document.getElementById(id) ||
+        runtime.document.getElementById(sanitizeUrl(id).replace(/^\/+/, '')) ||
+        undefined
+    : undefined;
+}
+
+function belongsToRoot(node: TaroReplayNodeLike, root: TaroReplayNodeLike): boolean {
+  const visited = new Set<TaroReplayNodeLike>();
+  let ancestor: TaroReplayNodeLike | null | undefined = node;
+  while (ancestor && !visited.has(ancestor)) {
+    if (ancestor === root) return true;
+    visited.add(ancestor);
+    const parent: TaroReplayNodeLike | null | undefined = ancestor.parentNode;
+    if (parent?.childNodes && !parent.childNodes.includes(ancestor)) return false;
+    ancestor = parent;
+  }
+  return false;
+}
+
 /** Owns exactly one visible root; transport completion never changes recording ownership. */
 export class ReplayCoordinator implements TaroReplayBridge {
   readonly #options: ReplayCoordinatorOptions;
@@ -52,6 +76,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
   #errorMode = false;
   #handle: TaroReplayHandle | undefined;
   #rootRuntime: TaroReplayRuntime | undefined;
+  #canvasRoot: TaroReplayNodeLike | undefined;
   #rootVersion = 0;
   #generation = 0;
   #destroyed = false;
@@ -184,11 +209,13 @@ export class ReplayCoordinator implements TaroReplayBridge {
       return false;
     const owner = ++this.#rootVersion;
     try {
+      this.#canvasRoot = this.#options.recordCanvas === true ? currentRoot(runtime) : undefined;
       if (this.#state === 'session' && this.#sessionDeadline === undefined)
         this.#sessionDeadline = this.#now() + this.#limits().maxDurationMs;
       const handle = createTaroReplay({
         sdk: this.#options.sdk,
         runtime,
+        recordCanvas: this.#options.recordCanvas === true,
         ...(this.#replayId ? { replayId: this.#replayId } : {}),
         ...(this.#options.privacy ? { privacy: this.#options.privacy } : {}),
         ...(this.#options.getMetadata ? { getMetadata: this.#options.getMetadata } : {}),
@@ -233,6 +260,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
   #releaseRoot(): TaroReplayCapture | undefined {
     this.#clearTimer();
     this.#rootVersion++;
+    this.#canvasRoot = undefined;
     const handle = this.#handle;
     this.#handle = undefined;
     if (!handle) return undefined;
@@ -395,6 +423,49 @@ export class ReplayCoordinator implements TaroReplayBridge {
   recordViewport(size: { width: number; height: number }): void {
     if (this.#rootRuntime && this.refreshEnabled())
       this.#handle?.getController()?.recordViewport?.(size);
+  }
+  recordCanvas(id: string, readFrame: () => string | undefined): boolean {
+    if (
+      this.#options.recordCanvas !== true ||
+      !this.refreshEnabled() ||
+      (this.#state !== 'session' && this.#state !== 'buffer')
+    )
+      return false;
+    const runtime = this.#rootRuntime;
+    const root = this.#canvasRoot;
+    const handle = this.#handle;
+    const owner = this.#rootVersion;
+    const controller = handle?.getController();
+    if (!runtime || !root || !controller?.recordCanvas) return false;
+    try {
+      const node = runtime.document.getElementById(id);
+      if (!node || currentRoot(runtime) !== root || !belongsToRoot(node, root)) return false;
+      return (
+        controller.recordCanvas(node, () => {
+          // The SDK decides when it is safe to read. Recheck ownership at that point,
+          // including synchronous navigation or a runtime kill switch during resolution.
+          try {
+            const mayRead = (): boolean =>
+              this.#rootVersion === owner &&
+              this.#handle === handle &&
+              this.#rootRuntime === runtime &&
+              this.#canvasRoot === root &&
+              this.#enabled() &&
+              (this.#state === 'session' || this.#state === 'buffer') &&
+              currentRoot(runtime) === root &&
+              belongsToRoot(node, root);
+            if (!mayRead()) return undefined;
+            const frame = readFrame();
+            return mayRead() ? frame : undefined;
+          } catch {
+            return undefined;
+          }
+        }) === true
+      );
+    } catch {
+      // Frame capture is observational; a host or SDK reader must not break drawing.
+      return false;
+    }
   }
 
   #beforeSendEvent(event: ReplayAwareEvent): void {

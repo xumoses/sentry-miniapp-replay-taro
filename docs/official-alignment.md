@@ -24,7 +24,7 @@ from unit tests. The protocol remains compatible with the installed
 | Resource limits              | Finite normalized duration/event/byte/batch-mutation/queue/retry limits. Mutation storm pauses until another visible attach; oversized initial checkpoint never loops.                                                                  |
 | Identity and shutdown        | reset discards local identity boundary and waits for next root; stop/kill/cleanup remove recording hooks/timers; pending completions cannot overwrite later states.                                                                     |
 | Logs and metrics             | No fabricated Replay server fields. Direct log/metric Replay correlation is not implemented by this adapter; core event/feedback hooks only cover their documented event types.                                                         |
-| Browser-only facilities      | No iframe/Canvas/WebView/native DOM recording, browser PerformanceObserver or web-vitals/rage-click parity, browser storage sticky sessions, cross-tab sessions, or worker compression.                                                 |
+| Browser-only facilities      | No iframe/automatic Canvas/WebView/native DOM recording, browser PerformanceObserver or web-vitals/rage-click parity, browser storage sticky sessions, cross-tab sessions, or worker compression.                                       |
 
 ## Official sources and version boundary
 
@@ -81,3 +81,25 @@ Passing these checks proves local behavior only. npm publication, actual
 mini-program device performance, Sentry ingestion/playback, and trial-release
 acceptance are separate follow-up gates. Candidate-only recorder APIs require
 a matching future SDK release; older SDKs safely fall back where documented.
+
+## Explicit Canvas extension
+
+`recordCanvas` defaults to false in the integration and direct recorder options. A host
+may supply synchronous PNG/JPEG pixels only for a marked Canvas/View inside the current
+recording root. `bridge.recordCanvas(id, readFrame)` performs route ownership checks before
+the SDK invokes the reader, and checks again if ownership changes during the call. Older
+SDKs without this method are safe no-ops. This extension is separate from ordinary media
+URL sanitization; it does not turn off `blockAllMedia`.
+
+Explicit pixel capture cannot automatically mask text, credentials or personal data in
+the image. The SDK remains responsible for per-node privacy markers, allowed raster
+formats, payload limits and rate limiting. The host should subscribe to recording state
+to recapture an already-drawn chart after attach/restart, and release its subscription
+on unmount. Recorder replacement may retain the Replay ID; process every recording
+notification and throttle duplicate notifications in the host. Successful frame capture
+deliberately does not notify subscribers again.
+
+`test/canvas.test.ts` covers disabled/stopped/hidden/reset roots, optional old-SDK support,
+foreign/detached/replaced roots, ownership changes and subscription-based refresh through
+the public bridge. `test/canvas-sdk.test.ts` runs with `TARO_REPLAY_SDK_SOURCE` to verify
+actual recorder output, default media filtering, marker enforcement and rate limiting.

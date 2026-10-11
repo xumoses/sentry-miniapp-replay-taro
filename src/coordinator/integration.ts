@@ -48,6 +48,7 @@ export function taroReplayIntegration(
     sendBufferedReplay: () => coordinator?.sendBufferedReplay() || Promise.resolve(),
     recordPageScroll: (position) => coordinator?.recordPageScroll(position),
     recordViewport: (size) => coordinator?.recordViewport(size),
+    recordCanvas: (id, readFrame) => coordinator?.recordCanvas(id, readFrame) === true,
     flush: () => coordinator?.flush() || Promise.resolve(),
     refreshEnabled: () => coordinator?.refreshEnabled() === true,
     getSnapshot: () => coordinator?.getSnapshot() || unavailable(),

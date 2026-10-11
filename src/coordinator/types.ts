@@ -40,6 +40,8 @@ export interface ReplayCoordinatorOptions {
   random?: () => number;
   now?: () => number;
   privacy?: TaroReplayPrivacyOptions;
+  /** Default false. Requires the SDK's explicit per-canvas marker and pixel safeguards. */
+  recordCanvas?: boolean;
   limits?: TaroReplayLimitOptions;
   /** Session segments are drained without replacing observers when supported by the SDK. */
   flushIntervalMs?: number;
@@ -64,6 +66,8 @@ export interface TaroReplayBridge {
   sendBufferedReplay?(): Promise<void>;
   recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): void;
   recordViewport?(size: { width: number; height: number }): void;
+  /** Resolves a canvas inside the visible root before the SDK may read its pixels. */
+  recordCanvas?(id: string, readFrame: () => string | undefined): boolean;
   /** Re-evaluates a runtime kill switch and tears down immediately when disabled. */
   refreshEnabled(): boolean;
   getSnapshot(): ReplayCoordinatorSnapshot;

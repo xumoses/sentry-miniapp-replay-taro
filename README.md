@@ -23,9 +23,27 @@
 - 可注入社区版 `sentry-miniapp` 或 scoped fork `@xumoses/sentry-miniapp` 的 SDK
   namespace。
 
-暂不支持原生小程序 DOM、Vue/uni-app、小游戏、Canvas、WebView、原生组件内部节点、
+暂不支持原生小程序 DOM、Vue/uni-app、小游戏、自动 Canvas 录制、WebView、原生组件内部节点、
 离线查看的完整 rrweb 播放体验，以及浏览器
 Session Replay 的全部事件类型。在非微信平台或不同 Taro 版本上的行为也尚未经过系统验证。
+
+### 显式 Canvas 像素桥接
+
+支持此能力的 SDK 可通过 `taroReplayIntegration({ sdk, recordCanvas: true })`
+开启像素桥接，默认关闭。目标 Taro `Canvas` 或包裹它的 `View` 必须有唯一 `id`
+及 `data-sentry-canvas={true}`。绘制完成后调用
+`bridge.recordCanvas?.(id, () => readPngOrJpegDataUri())`；读取函数由宿主提供，
+必须同步返回当前画面的 PNG/JPEG data URI 或 `undefined`，不要在调用桥接前导出像素。
+
+只有当前可见且正在录制的页面节点能够读取。隐藏、停止、reset、运行期开关关闭、
+旧页面节点或旧 SDK 缺少此方法时返回 `false`；SDK 再检查显式遮罩/屏蔽、
+每秒限频和字节预算。`bridge.subscribe` 在页面 attach/录制器重建后通知
+`snapshot.recording`，宿主可据此补采已绘制的图表。即使 Replay ID 没有变化也应
+重新尝试，并由宿主对重复通知限频；成功采帧本身不会触发通知。
+
+像素无法自动识别或遮罩个人信息，默认文字/输入遮罩不会修改图片内部内容。
+只对确认可公开的图表显式标记；普通图片和 CSS URL 仍使用原有媒体隐私规则，
+无需关闭 `blockAllMedia`。此能力不提供绘图指令录制、连续视频或原生组件内部 DOM。
 
 ## 安装
 

@@ -91,6 +91,7 @@ export interface TaroReplayRecorderController {
   takeSegment?(): TaroReplayCapture;
   recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): boolean;
   recordViewport?(size: { width: number; height: number }): boolean;
+  recordCanvas?(node: TaroReplayNodeLike, readFrame: () => string | undefined): boolean;
 }
 
 export interface StartTaroReplayRecorderOptions {
@@ -107,6 +108,7 @@ export interface StartTaroReplayRecorderOptions {
   maskInputValues?: boolean;
   maskAllInputs?: boolean;
   blockAllMedia?: boolean;
+  recordCanvas?: boolean;
   maskAttributes?: string[];
   maxDurationMs?: number;
   maxEvents?: number;
@@ -219,6 +221,8 @@ export interface CreateTaroReplayOptions {
   privacy?: TaroReplayPrivacyOptions;
   limits?: TaroReplayLimitOptions;
   captureBreadcrumbs?: boolean;
+  /** Default false. Only explicitly marked canvases may supply unmasked pixels. */
+  recordCanvas?: boolean;
   sendOnManualStop?: boolean;
   sendOnDurationStop?: boolean;
   sendOnDispose?: boolean;
@@ -238,6 +242,7 @@ export interface TaroReplayControllerView {
   takeSegment?(): TaroReplayCapture;
   recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): boolean;
   recordViewport?(size: { width: number; height: number }): boolean;
+  recordCanvas?(node: TaroReplayNodeLike, readFrame: () => string | undefined): boolean;
 }
 
 export interface TaroReplayHandle {

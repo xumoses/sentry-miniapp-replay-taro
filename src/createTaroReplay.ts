@@ -9,6 +9,7 @@ import type {
   TaroReplayControllerView,
   TaroReplayHandle,
   TaroReplayMetadata,
+  TaroReplayNodeLike,
 } from './types';
 
 const SYNTHETIC_ORIGIN = 'https://miniapp.local';
@@ -227,6 +228,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
 
       controller = options.sdk.startTaroDomReplayPoc({
         root,
+        recordCanvas: options.recordCanvas === true,
         MutationObserver: options.runtime.MutationObserver,
         href,
         ...(windowInfo.windowWidth === undefined ? {} : { width: windowInfo.windowWidth }),
@@ -304,6 +306,14 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         return controller?.getCapture().replayId || lastCapture?.replayId || '';
       },
       getCapture: () => controller?.getCapture() || lastCapture!,
+      ...(controller.recordCanvas
+        ? {
+            recordCanvas: (node: TaroReplayNodeLike, readFrame: () => string | undefined) =>
+              !terminal &&
+              options.recordCanvas === true &&
+              controller!.recordCanvas!(node, readFrame),
+          }
+        : {}),
       ...(controller.takeSegment ? { takeSegment: () => controller!.takeSegment!() } : {}),
       ...(controller.recordPageScroll
         ? {

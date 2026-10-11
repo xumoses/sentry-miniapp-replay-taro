@@ -28,7 +28,7 @@ into a Sentry Replay envelope.
   or the scoped fork `@xumoses/sentry-miniapp` package.
 
 It does not currently support native Mini Program DOM, Vue/uni-app, mini games,
-Canvas, WebView, nodes inside native components, full offline rrweb playback,
+automatic Canvas recording, WebView, nodes inside native components, full offline rrweb playback,
 or every event type offered by browser Session Replay. Other Mini Program
 platforms and Taro versions have not been systematically validated.
 
@@ -194,3 +194,26 @@ ingestion in the WeChat developer tools and on target devices after upgrading.
 ## License
 
 [MIT](./LICENSE)
+
+## Explicit Canvas pixel bridge
+
+With a supporting SDK, opt in using `taroReplayIntegration({ sdk, recordCanvas: true })`.
+The default is off. Give the target Taro Canvas or its containing View a unique `id`
+and `data-sentry-canvas={true}`. After drawing, call
+`bridge.recordCanvas?.(id, () => readPngOrJpegDataUri())` with a host-supplied synchronous
+reader returning a PNG/JPEG data URI or `undefined`. Do not export pixels before calling
+the bridge: it must first check the visible recording root.
+
+Hidden, stopped, reset, disabled, stale-root and older-SDK calls return false without
+reading pixels. The SDK separately enforces explicit masking/blocking, one-second rate
+limits and byte budgets. The existing `bridge.subscribe` reports recording after each
+root attach or recorder restart, so the host can capture a chart that was already drawn.
+Retry on every recording notification even when the Replay ID is unchanged, and throttle
+duplicate notifications in the host. Successful frame capture does not emit another
+subscription notification.
+
+Pixels cannot be automatically redacted. Text/input masking does not change text inside
+an image; mark only charts whose complete rendered content is approved for capture.
+Ordinary image and CSS URL filtering stays enabled, without changing `blockAllMedia`.
+This is explicit frame capture, not drawing-command instrumentation, continuous video,
+or access to native component DOM.
