@@ -157,6 +157,45 @@ hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 
 只有页面内的所有内容都已确认是合成测试数据时，才可以显式设置
 `privacy.maskAllText: false`。不要在真实用户页面复制示例中的关闭选项。
 
+## 可选的 Replay 网络 headers
+
+默认不采集请求或响应 headers。需要配套 SDK 支持以下四个官方同名选项，并把同一份
+配置同时传给 SDK 初始化和 `taroReplayIntegration`（或 `createTaroReplay`）：
+
+```ts
+const networkDetails = {
+  networkDetailAllowUrls: [/^https:\/\/api\.example\.com\/v1(?:\/|$)/],
+  networkDetailDenyUrls: [/\/private(?:\/|$)/],
+  networkRequestHeaders: ['x-request-id'],
+  networkResponseHeaders: ['x-request-id'],
+};
+
+Sentry.init({
+  dsn: 'https://public@example.com/1',
+  ...networkDetails,
+  integrations: [taroReplayIntegration({ sdk: Sentry, ...networkDetails })],
+});
+```
+
+- URL 先去除 userinfo、query 和 hash，再执行规则；规则只针对 origin/path，
+  不支持 query/hash 条件。字符串使用子串匹配，推荐像上例一样锚定完整 origin 的正则；
+  deny 优先，allow 为空时不采集。调用方的正则 `lastIndex` 不会改变。
+- 只有 URL 获准时，默认允许 `content-type`、`content-length`、`accept`；
+  两个 header 名称列表在对应方向增加允许项，大小写不敏感，不支持通配符。
+  Authorization、Cookie、Set-Cookie、token、密码、密钥等敏感名称始终拒绝，
+  即使显式加入列表也不会保存。自定义名称和值仍需宿主确认不含个人信息或业务秘密。
+- 每个方向最多 20 项；名称最多 128 个 ASCII 字符、单值最多 1024 UTF-8 字节、
+  名称和值合计最多 4096 UTF-8 字节。超限项跳过，不截断值。不会读取请求或响应 body。
+- 配置在创建入口时复制，后续修改原数组或正则不会扩大采集范围；页面重建、buffer
+  轮转和异常晋升沿用同一规则。修改策略需重建 integration。
+- 配套 SDK 通过临时 breadcrumb hint 将 headers 交给 Replay，普通错误 breadcrumb
+  不新增 headers；adapter 不修改原始 breadcrumb/hint。手动传入的
+  `data.request_headers` / `data.response_headers` 也必须重新通过上述规则，
+  其他通用 `headers`、嵌套敏感字段和 body 仍被过滤。
+
+旧 SDK 可能忽略这些选项；发布升级后仍需分别确认 Replay 网络面板、错误 breadcrumb
+和真机隐私边界。本地测试不能代替线上验收。
+
 ## 发送路径
 
 生产发送调用当前 Sentry client 的 `Client.sendEnvelope()`，因此沿用宿主 SDK 的

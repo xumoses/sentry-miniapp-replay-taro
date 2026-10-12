@@ -1,3 +1,5 @@
+import { withNetworkOptionsSnapshot } from '../network-config';
+import { snapshotNetworkOptions } from '../network-details';
 import type { Integration } from '@sentry/core';
 
 import type { SentryMiniappReplaySdk, SentryReplayClient } from '../types';
@@ -25,6 +27,7 @@ export interface TaroReplayIntegration extends Integration {
 export function taroReplayIntegration(
   options: TaroReplayIntegrationOptions,
 ): TaroReplayIntegration {
+  const networkOptions = snapshotNetworkOptions(options);
   let coordinator: ReplayCoordinator | undefined;
   const listeners = new Set<(snapshot: ReplayCoordinatorSnapshot) => void>();
   const coordinatorSubscriptions = new Map<
@@ -84,7 +87,7 @@ export function taroReplayIntegration(
       for (const detach of coordinatorSubscriptions.values()) detach();
       coordinatorSubscriptions.clear();
       coordinator = new ReplayCoordinator({
-        ...options,
+        ...withNetworkOptionsSnapshot(options, networkOptions),
         client: client as SentryReplayClient,
         ...(sessionRate === undefined ? {} : { replaysSessionSampleRate: sessionRate }),
         ...(errorRate === undefined ? {} : { replaysOnErrorSampleRate: errorRate }),

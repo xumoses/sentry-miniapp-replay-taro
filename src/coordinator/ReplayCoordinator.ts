@@ -1,3 +1,5 @@
+import { withNetworkOptionsSnapshot } from '../network-config';
+import { snapshotNetworkOptions } from '../network-details';
 import type { FeedbackEvent } from '@sentry/core';
 import { sanitizeUrl } from '../privacy';
 import { createTaroReplay } from '../createTaroReplay';
@@ -94,7 +96,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
   #lastDelivery: Promise<void> = Promise.resolve();
 
   constructor(options: ReplayCoordinatorOptions) {
-    this.#options = options;
+    this.#options = withNetworkOptionsSnapshot(options);
     this.#random = options.random || Math.random;
     this.#sampledMode = this.#enabled()
       ? sampled(clampRate(options.replaysSessionSampleRate), this.#random)
@@ -215,6 +217,7 @@ export class ReplayCoordinator implements TaroReplayBridge {
       const handle = createTaroReplay({
         sdk: this.#options.sdk,
         runtime,
+        ...snapshotNetworkOptions(this.#options),
         recordCanvas: this.#options.recordCanvas === true,
         ...(this.#replayId ? { replayId: this.#replayId } : {}),
         ...(this.#options.privacy ? { privacy: this.#options.privacy } : {}),

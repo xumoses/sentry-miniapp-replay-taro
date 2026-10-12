@@ -1,4 +1,9 @@
-import type { Breadcrumb } from '@sentry/core';
+import {
+  createNetworkHeaderPolicy,
+  sanitizeNetworkDetailUrl,
+  snapshotNetworkOptions,
+} from './network-details';
+import type { Breadcrumb, BreadcrumbHint } from '@sentry/core';
 
 import { sendReplayCapture } from './envelope';
 import { sanitizeBreadcrumb, sanitizeRecord, sanitizeUrl } from './privacy';
@@ -74,6 +79,8 @@ function shouldSendCapture(options: CreateTaroReplayOptions, reason: string | nu
 }
 
 export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHandle {
+  const networkOptions = snapshotNetworkOptions(options);
+  const networkPolicy = createNetworkHeaderPolicy(networkOptions);
   let controller: ReturnType<typeof options.sdk.startTaroDomReplayPoc> | undefined;
   let lastCapture: TaroReplayCapture | undefined;
   let detachBreadcrumb: (() => void) | undefined;
@@ -85,6 +92,42 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       options.onError?.(error);
     } catch {
       /* Diagnostics cannot interrupt the host. */
+    }
+  };
+
+  const recordBreadcrumb = (breadcrumb: Breadcrumb, hint?: BreadcrumbHint): boolean => {
+    try {
+      const details = hint?.['replayNetworkDetails'];
+      let replayBreadcrumb = breadcrumb;
+      if (details && typeof details === 'object' && !Array.isArray(details)) {
+        const detailUrl = Object.getOwnPropertyDescriptor(details, 'url');
+        const breadcrumbUrl = breadcrumb.data?.['url'];
+        if (
+          typeof breadcrumbUrl === 'string' &&
+          detailUrl &&
+          'value' in detailUrl &&
+          detailUrl.value === sanitizeNetworkDetailUrl(breadcrumbUrl)
+        ) {
+          const data = { ...breadcrumb.data };
+          for (const field of ['request_headers', 'response_headers'] as const) {
+            const descriptor = Object.getOwnPropertyDescriptor(details, field);
+            if (descriptor && 'value' in descriptor) data[field] = descriptor.value;
+          }
+          replayBreadcrumb = { ...breadcrumb, data };
+        }
+      }
+      return (
+        controller?.addBreadcrumb(
+          sanitizeBreadcrumb(replayBreadcrumb, {
+            maskMessage: options.privacy?.maskAllText !== false,
+            networkPolicy,
+          }),
+        ) ?? false
+      );
+    } catch (error) {
+      // Core invokes this hook synchronously without catching consumer errors.
+      reportError(error);
+      return false;
     }
   };
 
@@ -228,6 +271,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
 
       controller = options.sdk.startTaroDomReplayPoc({
         root,
+        ...snapshotNetworkOptions(networkOptions),
         recordCanvas: options.recordCanvas === true,
         MutationObserver: options.runtime.MutationObserver,
         href,
@@ -262,13 +306,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       }
 
       if (options.captureBreadcrumbs !== false && client?.on) {
-        detachBreadcrumb = client.on('beforeAddBreadcrumb', (breadcrumb: Breadcrumb) => {
-          controller?.addBreadcrumb(
-            sanitizeBreadcrumb(breadcrumb, {
-              maskMessage: options.privacy?.maskAllText !== false,
-            }),
-          );
-        });
+        detachBreadcrumb = client.on('beforeAddBreadcrumb', recordBreadcrumb);
       }
 
       const navigation: Breadcrumb = {
@@ -298,10 +336,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
   const getController = (): TaroReplayControllerView | undefined => {
     if (!controller) return undefined;
     return {
-      addBreadcrumb: (breadcrumb) =>
-        controller!.addBreadcrumb(
-          sanitizeBreadcrumb(breadcrumb, { maskMessage: options.privacy?.maskAllText !== false }),
-        ),
+      addBreadcrumb: (breadcrumb) => recordBreadcrumb(breadcrumb),
       get replayId() {
         return controller?.getCapture().replayId || lastCapture?.replayId || '';
       },

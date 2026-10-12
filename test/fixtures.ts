@@ -9,7 +9,7 @@ import type {
   TaroReplayRecorderController,
   TaroReplayRuntime,
 } from '../src/types';
-import type { Breadcrumb, Event } from '@sentry/core';
+import type { Breadcrumb, BreadcrumbHint, Event } from '@sentry/core';
 
 export function makeCapture(overrides: Partial<TaroReplayCapture> = {}): TaroReplayCapture {
   return {
@@ -59,14 +59,20 @@ export function makeSdk(): {
   sdk: SentryMiniappReplaySdk;
   sendEnvelope: Mock;
   addRecordedBreadcrumb: Mock;
-  emitBreadcrumb(breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]): void;
+  emitBreadcrumb(
+    breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0],
+    hint?: BreadcrumbHint,
+  ): void;
   emitBeforeSend(event: Event): void;
   getStartOptions(): StartTaroReplayRecorderOptions;
   getDetachCount(): number;
 } {
   let startOptions: StartTaroReplayRecorderOptions | undefined;
   let breadcrumbHook:
-    | ((breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0]) => void)
+    | ((
+        breadcrumb: Parameters<TaroReplayRecorderController['addBreadcrumb']>[0],
+        hint?: BreadcrumbHint,
+      ) => void)
     | undefined;
   let beforeSendHook: ((event: Event) => void) | undefined;
   let detachCount = 0;
@@ -121,7 +127,7 @@ export function makeSdk(): {
       },
       sendEnvelope,
     }),
-    addBreadcrumb: (breadcrumb) => breadcrumbHook?.(breadcrumb),
+    addBreadcrumb: (breadcrumb, hint) => breadcrumbHook?.(breadcrumb, hint),
     startTaroDomReplayPoc: (options) => {
       startOptions = options;
       if (capture.stopReason) {
@@ -145,7 +151,7 @@ export function makeSdk(): {
     sdk,
     sendEnvelope,
     addRecordedBreadcrumb,
-    emitBreadcrumb: (breadcrumb) => breadcrumbHook?.(breadcrumb),
+    emitBreadcrumb: (breadcrumb, hint) => breadcrumbHook?.(breadcrumb, hint),
     emitBeforeSend: (event) => beforeSendHook?.(event),
     getStartOptions: () => {
       if (!startOptions) throw new Error('Replay was not started');

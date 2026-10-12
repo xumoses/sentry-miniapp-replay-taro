@@ -6,6 +6,7 @@ import type {
   SentryMiniappReplaySdk,
   SentryReplayClient,
   TaroReplayLimitOptions,
+  TaroReplayNetworkOptions,
   TaroReplayPrivacyOptions,
   TaroReplayRuntime,
 } from '../types';
@@ -31,7 +32,7 @@ export interface ReplayCoordinatorSnapshot {
   recording?: boolean;
 }
 
-export interface ReplayCoordinatorOptions {
+export interface ReplayCoordinatorOptions extends TaroReplayNetworkOptions {
   sdk: SentryMiniappReplaySdk;
   client: SentryReplayClient;
   enabled?: boolean | (() => boolean);

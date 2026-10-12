@@ -1,3 +1,4 @@
+import type { NetworkHeaderPolicy } from './network-details';
 import type { Breadcrumb } from '@sentry/core';
 
 const FILTERED = '[Filtered]';
@@ -49,11 +50,29 @@ export function sanitizeRecord(value: Record<string, unknown>): Record<string, u
 
 export function sanitizeBreadcrumb(
   breadcrumb: Breadcrumb,
-  options: { maskMessage: boolean },
+  options: { maskMessage: boolean; networkPolicy?: NetworkHeaderPolicy },
 ): Breadcrumb {
+  const data = breadcrumb.data ? sanitizeRecord(breadcrumb.data) : undefined;
+  // Only these two explicit network fields can opt in. Generic headers/body and
+  // metadata stay filtered, including manually supplied or nested breadcrumbs.
+  if (
+    data &&
+    (breadcrumb.category === 'fetch' || breadcrumb.category === 'xhr') &&
+    typeof breadcrumb.data?.['url'] === 'string' &&
+    options.networkPolicy?.isAllowed(breadcrumb.data['url'])
+  ) {
+    for (const [field, direction] of [
+      ['request_headers', 'request'],
+      ['response_headers', 'response'],
+    ] as const) {
+      if (Object.prototype.hasOwnProperty.call(breadcrumb.data, field)) {
+        data[field] = options.networkPolicy.filterHeaders(breadcrumb.data[field], direction);
+      }
+    }
+  }
   return {
     ...breadcrumb,
     ...(breadcrumb.message && options.maskMessage ? { message: FILTERED } : {}),
-    ...(breadcrumb.data ? { data: sanitizeRecord(breadcrumb.data) } : {}),
+    ...(data ? { data } : {}),
   };
 }

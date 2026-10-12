@@ -141,6 +141,50 @@ The defaults minimize captured data:
 Only set `privacy.maskAllText: false` when every value rendered by the page is
 known synthetic test data. Do not copy that option into a real user flow.
 
+## Optional Replay network headers
+
+Request and response headers are off by default. A supporting SDK is required.
+Pass the same four options to SDK initialization and `taroReplayIntegration`
+(or `createTaroReplay`):
+
+```ts
+const networkDetails = {
+  networkDetailAllowUrls: [/^https:\/\/api\.example\.com\/v1(?:\/|$)/],
+  networkDetailDenyUrls: [/\/private(?:\/|$)/],
+  networkRequestHeaders: ['x-request-id'],
+  networkResponseHeaders: ['x-request-id'],
+};
+
+Sentry.init({
+  dsn: 'https://public@example.com/1',
+  ...networkDetails,
+  integrations: [taroReplayIntegration({ sdk: Sentry, ...networkDetails })],
+});
+```
+
+- Rules match URLs after removing userinfo, query and fragment. Only origin/path
+  conditions apply; query/fragment conditions are unsupported. Strings use substring
+  matching, so prefer a regular expression anchored to the complete trusted origin.
+  Deny rules win; an empty allowlist records no headers. Caller RegExp state is unchanged.
+- Allowed URLs include `content-type`, `content-length` and `accept` by default.
+  Request/response lists add names for that direction, matched case-insensitively
+  without wildcards. Authentication, cookie, token, password and secret header names
+  are always excluded, even when explicitly listed. Audit custom names and values
+  before allowing them: a name allowlist cannot identify secrets in arbitrary values.
+- Each direction permits at most 20 headers, 128 ASCII characters per name,
+  1024 UTF-8 bytes per value and 4096 UTF-8 bytes for names plus values in total.
+  Oversized entries are skipped rather than truncated. Bodies remain unrecorded.
+- Configuration is copied when each entry point is created. Caller array/RegExp
+  changes cannot widen it later, including recorder replacement, buffer rollover
+  and error promotion. Recreate the integration to change policy.
+- The supporting SDK delivers headers through a temporary breadcrumb hint for Replay,
+  without adding them to ordinary error breadcrumbs. The adapter does not mutate the
+  breadcrumb or hint. Manually supplied `data.request_headers`/`data.response_headers`
+  are filtered again; generic `headers`, nested sensitive data and bodies stay filtered.
+
+Older SDKs may ignore the options. After publishing compatible versions, verify
+Replay network details, error breadcrumbs and privacy on the target device separately.
+
 ## Transport path
 
 Production delivery uses the current Sentry client's `Client.sendEnvelope()`.

@@ -1,5 +1,7 @@
+import type { NetworkDetailOptions } from './network-details';
 import type {
   Breadcrumb,
+  BreadcrumbHint,
   DsnComponents,
   Event,
   EventHint,
@@ -94,7 +96,9 @@ export interface TaroReplayRecorderController {
   recordCanvas?(node: TaroReplayNodeLike, readFrame: () => string | undefined): boolean;
 }
 
-export interface StartTaroReplayRecorderOptions {
+export type TaroReplayNetworkOptions = NetworkDetailOptions;
+
+export interface StartTaroReplayRecorderOptions extends TaroReplayNetworkOptions {
   root: TaroReplayNodeLike;
   MutationObserver: TaroReplayMutationObserverConstructor;
   href?: string;
@@ -130,7 +134,7 @@ export interface SentryReplayClient {
   };
   on?(
     hook: 'beforeAddBreadcrumb',
-    callback: (breadcrumb: Breadcrumb) => void,
+    callback: (breadcrumb: Breadcrumb, hint?: BreadcrumbHint) => void,
   ): (() => void) | undefined;
   on?(
     hook: 'beforeSendEvent',
@@ -149,7 +153,7 @@ export interface SentryMiniappReplaySdk {
   SDK_NAME?: string;
   SDK_VERSION?: string;
   getClient(): SentryReplayClient | undefined;
-  addBreadcrumb?(breadcrumb: Breadcrumb): void;
+  addBreadcrumb?(breadcrumb: Breadcrumb, hint?: BreadcrumbHint): void;
   startTaroDomReplayPoc(options: StartTaroReplayRecorderOptions): TaroReplayRecorderController;
 }
 
@@ -215,7 +219,7 @@ export interface TaroReplayLimitOptions {
   rollingWindowMs?: number;
 }
 
-export interface CreateTaroReplayOptions {
+export interface CreateTaroReplayOptions extends TaroReplayNetworkOptions {
   sdk: SentryMiniappReplaySdk;
   runtime: TaroReplayRuntime;
   privacy?: TaroReplayPrivacyOptions;

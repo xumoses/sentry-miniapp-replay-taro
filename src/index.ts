@@ -28,6 +28,7 @@ export type {
   TaroReplayMutationObserverLike,
   TaroReplayMutationRecordLike,
   TaroReplayNodeLike,
+  TaroReplayNetworkOptions,
   TaroReplayPrivacyOptions,
   TaroReplayRecorderController,
   TaroReplayRuntime,
