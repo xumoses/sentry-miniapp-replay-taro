@@ -275,3 +275,7 @@ an image; mark only charts whose complete rendered content is approved for captu
 Ordinary image and CSS URL filtering stays enabled, without changing `blockAllMedia`.
 This is explicit frame capture, not drawing-command instrumentation, continuous video,
 or access to native component DOM.
+
+## Optional Worker compression
+
+A WeChat host can configure `compression: { workerPath: 'workers/sentry-replay.js' }` after copying the `./worker` export into its `app.json.workers` directory. This uses Sentry's zlib recording format with raw JSON fallback and unchanged memory limits. A matching SDK drains session segments before overflow and promotes error buffers without immediately repeating the full snapshot. See [host setup, lifecycle and limits](./docs/worker-compression.md).

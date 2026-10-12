@@ -1,3 +1,8 @@
+import {
+  ReplayCompression,
+  type ReplayCompressionOptions,
+  type ReplayCompressionSnapshot,
+} from '../compression';
 import { sendReplayCapture, utf8ByteLength, type ReplayEnvelopeOptions } from '../envelope';
 import { finiteInteger } from './limits';
 import type { SentryReplayClient, TaroReplayCapture } from '../types';
@@ -9,6 +14,7 @@ export interface ReplayDeliverySnapshot {
   handedOffSegments: number;
   droppedSegments: number;
   retryCount: number;
+  compression?: ReplayCompressionSnapshot;
   lastStatus?: 'accepted' | 'handed-off' | 'rejected' | 'cancelled';
   lastStatusCode?: number;
 }
@@ -30,6 +36,7 @@ interface PendingSegment {
 /** One bounded delivery queue. Never bypasses the client's consent/offline transport. */
 export class ReplayDelivery {
   readonly #client: SentryReplayClient;
+  readonly #compression: ReplayCompression;
   readonly #onChange: () => void;
   readonly #isEnabled: () => boolean;
   readonly #limits: {
@@ -55,11 +62,13 @@ export class ReplayDelivery {
   constructor(
     client: SentryReplayClient,
     options: ReplayDeliveryOptions & {
+      compression?: ReplayCompressionOptions;
       onChange(): void;
       isEnabled(): boolean;
     },
   ) {
     this.#client = client;
+    this.#compression = new ReplayCompression(options.compression);
     this.#onChange = options.onChange;
     this.#isEnabled = options.isEnabled;
     this.#limits = {
@@ -71,7 +80,7 @@ export class ReplayDelivery {
   }
 
   getSnapshot(): ReplayDeliverySnapshot {
-    return { ...this.#snapshot };
+    return { ...this.#snapshot, compression: this.#compression.getSnapshot() };
   }
 
   enqueue(capture: TaroReplayCapture, options: ReplayEnvelopeOptions): Promise<void> {
@@ -96,7 +105,12 @@ export class ReplayDelivery {
     return completion;
   }
 
+  releaseWorker(): void {
+    this.#compression.reset();
+  }
+
   cancel(): void {
+    this.releaseWorker();
     this.#generation++;
     for (const item of this.#queue) item.resolve();
     this.#queue = [];
@@ -116,6 +130,19 @@ export class ReplayDelivery {
       while (this.#queue.length) {
         const item = this.#queue[0]!;
         try {
+          if (this.#compression.enabled && !item.options.recording) {
+            const events = JSON.stringify(item.capture.events);
+            const compressed = await this.#compression.compress(events, utf8ByteLength(events));
+            const header = `${JSON.stringify({ segment_id: item.options.segmentId || 0 })}\n`;
+            if (compressed) {
+              // segment_id is numeric: the recording header is always ASCII.
+              const recording = new Uint8Array(header.length + compressed.length);
+              for (let index = 0; index < header.length; index++)
+                recording[index] = header.charCodeAt(index);
+              recording.set(compressed, header.length);
+              item.options = { ...item.options, recording };
+            } else item.options = { ...item.options, recording: header + events };
+          }
           for (let attempt = 0; ; attempt++) {
             if (item.generation !== this.#generation || !this.#isEnabled()) break;
             let result;

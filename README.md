@@ -255,3 +255,7 @@ ingestion 结果。
 ## License
 
 [MIT](./LICENSE)
+
+## 可选 Worker 压缩
+
+微信宿主可配置 `compression: { workerPath: 'workers/sentry-replay.js' }`，并把包的 `./worker` 导出复制到 `app.json.workers` 目录。Worker 使用 Sentry 官方 zlib 录制格式，失败自动降级原始 JSON；原有内存限额保持不变。匹配 SDK 支持接近限额时提前发送增量分段，以及错误 buffer 晋升时复用 observer、避免立即重发完整快照。详见 [构建、生命周期和限制](./docs/worker-compression.md)。

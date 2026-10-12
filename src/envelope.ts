@@ -42,6 +42,8 @@ export interface ReplayEnvelopeOptions {
   replayType?: 'session' | 'buffer';
   segmentId?: number;
   replayStartTimestamp?: number;
+  /** Prepared recording bytes, with the uncompressed segment header already prepended. */
+  recording?: string | Uint8Array;
 }
 
 export interface ReplaySendResult {
@@ -79,7 +81,7 @@ export function createReplayEnvelope(
     ...(metadata.tags ? { tags: metadata.tags } : {}),
     ...(metadata.contexts ? { contexts: mergeReplayContexts({}, metadata.contexts) } : {}),
   };
-  const recording = serializeReplayRecording(capture, options.segmentId || 0);
+  const recording = options.recording ?? serializeReplayRecording(capture, options.segmentId || 0);
 
   return [
     {
@@ -90,7 +92,13 @@ export function createReplayEnvelope(
     },
     [
       [{ type: 'replay_event' }, replayEvent],
-      [{ type: 'replay_recording', length: utf8ByteLength(recording) }, recording],
+      [
+        {
+          type: 'replay_recording',
+          length: typeof recording === 'string' ? utf8ByteLength(recording) : recording.length,
+        },
+        recording,
+      ],
     ],
   ];
 }

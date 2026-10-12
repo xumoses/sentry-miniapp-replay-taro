@@ -24,7 +24,9 @@ from unit tests. The protocol remains compatible with the installed
 | Resource limits              | Finite normalized duration/event/byte/batch-mutation/queue/retry limits. Mutation storm pauses until another visible attach; oversized initial checkpoint never loops.                                                                                                                           |
 | Identity and shutdown        | reset discards local identity boundary and waits for next root; stop/kill/cleanup remove recording hooks/timers; pending completions cannot overwrite later states.                                                                                                                              |
 | Logs and metrics             | No fabricated Replay server fields. Direct log/metric Replay correlation is not implemented by this adapter; core event/feedback hooks only cover their documented event types.                                                                                                                  |
-| Browser-only facilities      | No iframe/automatic Canvas/WebView/native DOM recording, browser PerformanceObserver or web-vitals/rage-click parity, browser storage sticky sessions, cross-tab sessions, or worker compression.                                                                                                |
+| Browser-only facilities      | No iframe/automatic Canvas/WebView/native DOM recording, browser PerformanceObserver or web-vitals/rage-click parity, browser storage sticky sessions, cross-tab sessions.                                                                                                                       |
+
+Optional [WeChat worker compression](./worker-compression.md) follows the official zlib recording protocol. Supporting SDKs drain before session-buffer overflow and promote error buffers without an immediate duplicate snapshot; existing byte limits stay unchanged.
 
 ## Official sources and version boundary
 

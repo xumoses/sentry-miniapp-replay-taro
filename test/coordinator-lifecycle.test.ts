@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test';
+import { ReplayDelivery } from '../src/coordinator/delivery';
 import { ReplayCoordinator } from '../src/coordinator/ReplayCoordinator';
 import { taroReplayIntegration } from '../src/coordinator/integration';
 import { makeRuntime, makeSdk } from './fixtures';
@@ -11,13 +12,15 @@ const error = (id = 'e') => ({
   event_id: id.repeat(32),
   exception: { values: [{ type: 'Error', value: 'synthetic' }] },
 });
-function recorderHarness({ drain = true, initialLimit = false } = {}) {
+function recorderHarness({ drain = true, initialLimit = false, promotion = false } = {}) {
   const f = makeSdk();
   let active = 0;
   const controllers: TaroReplayRecorderController[] = [];
+  const onBufferFull: (() => void)[] = [];
   const pageScroll = vi.fn(() => true);
   const viewport = vi.fn(() => true);
   f.sdk.startTaroDomReplayPoc = (options) => {
+    onBufferFull.push(() => options.onBufferFull?.());
     const startedAt = Date.now();
     let stopped = false;
     let capture: TaroReplayCapture = {
@@ -75,6 +78,16 @@ function recorderHarness({ drain = true, initialLimit = false } = {}) {
             },
           }
         : {}),
+      ...(promotion
+        ? {
+            promoteToSession(duration: number) {
+              controller.takeSegment!();
+              clearTimeout(timer);
+              timer = setTimeout(() => controller.stop('duration'), duration);
+              return true;
+            },
+          }
+        : {}),
       recordPageScroll: pageScroll,
       recordViewport: viewport,
     };
@@ -86,11 +99,98 @@ function recorderHarness({ drain = true, initialLimit = false } = {}) {
     } else timer = setTimeout(() => controller.stop('duration'), options.maxDurationMs);
     return controller;
   };
-  return { ...f, controllers, pageScroll, viewport, active: () => active };
+  return { ...f, controllers, onBufferFull, pageScroll, viewport, active: () => active };
 }
 afterEach(() => vi.useRealTimers());
 
 describe('Replay recording ownership and controls', () => {
+  test('a failed synchronous buffer drain stops the dependent recording chain', () => {
+    vi.useFakeTimers();
+    const f = recorderHarness();
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysSessionSampleRate: 1,
+    });
+    c.attachRoot(makeRuntime());
+    f.controllers[0]!.stop('buffer-drain');
+    expect(c.getSnapshot()).toMatchObject({ state: 'error', recording: false });
+    expect(c.getSnapshot().error?.message).toContain('buffer drain failed');
+    expect(f.sendEnvelope).not.toHaveBeenCalled();
+    c.destroy();
+  });
+
+  test('an old stop completion cannot release a worker belonging to a restarted session', async () => {
+    vi.useFakeTimers();
+    const f = recorderHarness();
+    let finish!: (value: unknown) => void;
+    f.sendEnvelope.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const release = vi.spyOn(ReplayDelivery.prototype, 'releaseWorker');
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysSessionSampleRate: 1,
+    });
+    c.attachRoot(makeRuntime());
+    const stopped = c.stop();
+    c.start();
+    c.attachRoot(makeRuntime());
+    finish({ statusCode: 200 });
+    await stopped;
+    expect(c.getSnapshot()).toMatchObject({ state: 'session', recording: true });
+    expect(release).not.toHaveBeenCalled();
+    c.destroy();
+    release.mockRestore();
+  });
+
+  test('promotes the same observer and sends one full snapshot followed by increments', async () => {
+    vi.useFakeTimers();
+    const f = recorderHarness({ promotion: true });
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysOnErrorSampleRate: 1,
+    });
+    c.attachRoot(makeRuntime());
+    f.emitBeforeSend(error());
+    await settle();
+    expect(f.controllers).toHaveLength(1);
+    expect(f.active()).toBe(1);
+    f.controllers[0]!.addBreadcrumb({});
+    await c.flush();
+    const recordings = f.sendEnvelope.mock.calls.map((call) =>
+      JSON.parse((call[0][1][1][1] as string).split('\n')[1]!),
+    );
+    expect(recordings).toHaveLength(2);
+    expect(recordings.flat().filter((event: { type: number }) => event.type === 2)).toHaveLength(1);
+    expect(recordings[1].every((event: { type: number }) => event.type === 5)).toBe(true);
+    expect(f.sendEnvelope.mock.calls.map((call) => call[0][1][0][1].segment_id)).toEqual([0, 1]);
+    c.destroy();
+  });
+
+  test('drains a full session buffer synchronously without a checkpoint or observer restart', async () => {
+    vi.useFakeTimers();
+    const f = recorderHarness();
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysSessionSampleRate: 1,
+    });
+    c.attachRoot(makeRuntime());
+    f.onBufferFull[0]!();
+    expect(f.controllers[0]!.getCapture().events).toHaveLength(0);
+    f.controllers[0]!.addBreadcrumb({});
+    await c.flush();
+    expect(f.controllers).toHaveLength(1);
+    expect(f.sendEnvelope.mock.calls.map((call) => call[0][1][0][1].segment_id)).toEqual([0, 1]);
+    c.destroy();
+  });
+
   test('rolls an error buffer past five minutes without sending and keeps one recorder', async () => {
     vi.useFakeTimers();
     const f = recorderHarness();

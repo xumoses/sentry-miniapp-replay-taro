@@ -91,6 +91,8 @@ export interface TaroReplayRecorderController {
   getCapture(): TaroReplayCapture;
   stop(reason?: string): TaroReplayCapture;
   takeSegment?(): TaroReplayCapture;
+  /** Drain an uploaded error buffer and keep the same observer/node mirror. */
+  promoteToSession?(maxDurationMs: number): boolean;
   recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): boolean;
   recordViewport?(size: { width: number; height: number }): boolean;
   recordCanvas?(node: TaroReplayNodeLike, readFrame: () => string | undefined): boolean;
@@ -122,6 +124,12 @@ export interface StartTaroReplayRecorderOptions extends TaroReplayNetworkOptions
   replayId?: string;
   metadata?: TaroReplayMetadata;
   onEvent?: (event: TaroReplayEvent) => void;
+  /** Synchronous opportunity to drain a full session segment. */
+  onBufferFull?: () => void;
+  /** Lightweight post-append size notification; never includes recorded values. */
+  onBufferChange?: (
+    stats: Pick<TaroReplayCapture['stats'], 'eventCount' | 'approximateBytes'>,
+  ) => void;
   onStop?: (capture: TaroReplayCapture) => void;
 }
 
@@ -239,6 +247,12 @@ export interface CreateTaroReplayOptions extends TaroReplayNetworkOptions {
   getMetadata?: (context: TaroReplayContext) => TaroReplayMetadata | undefined;
   onCapture?: (capture: TaroReplayCapture) => void | Promise<void>;
   onEvent?: (event: TaroReplayEvent) => void;
+  /** Synchronous opportunity to drain a full session segment. */
+  onBufferFull?: () => void;
+  /** Lightweight post-append size notification; never includes recorded values. */
+  onBufferChange?: (
+    stats: Pick<TaroReplayCapture['stats'], 'eventCount' | 'approximateBytes'>,
+  ) => void;
   onError?: (error: unknown) => void;
 }
 
@@ -247,6 +261,8 @@ export interface TaroReplayControllerView {
   readonly replayId: string;
   getCapture(): TaroReplayCapture;
   takeSegment?(): TaroReplayCapture;
+  /** Drain an uploaded error buffer and keep the same observer/node mirror. */
+  promoteToSession?(maxDurationMs: number): boolean;
   recordPageScroll?(position: { scrollTop?: number; scrollLeft?: number }): boolean;
   recordViewport?(size: { width: number; height: number }): boolean;
   recordCanvas?(node: TaroReplayNodeLike, readFrame: () => string | undefined): boolean;

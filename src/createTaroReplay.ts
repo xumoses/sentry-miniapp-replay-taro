@@ -330,6 +330,8 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
         ...options.limits,
         metadata,
         ...(options.onEvent ? { onEvent: options.onEvent } : {}),
+        ...(options.onBufferFull ? { onBufferFull: options.onBufferFull } : {}),
+        ...(options.onBufferChange ? { onBufferChange: options.onBufferChange } : {}),
         onStop: (capture) => {
           void finalize(capture);
         },
@@ -385,6 +387,9 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
           }
         : {}),
       ...(controller.takeSegment ? { takeSegment: () => controller!.takeSegment!() } : {}),
+      ...(controller.promoteToSession
+        ? { promoteToSession: (duration: number) => controller!.promoteToSession!(duration) }
+        : {}),
       ...(controller.recordPageScroll
         ? {
             recordPageScroll: (position: { scrollTop?: number; scrollLeft?: number }) =>

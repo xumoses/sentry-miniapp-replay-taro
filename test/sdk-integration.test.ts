@@ -23,6 +23,7 @@ async function candidate() {
   >;
   const f = makeSdk();
   let active = 0;
+  let mutationOrdinal = 0;
   const observers: Array<{
     connected: boolean;
     callback(records: TaroReplayMutationRecordLike[]): void;
@@ -60,7 +61,10 @@ async function candidate() {
     runtime,
     active: () => active,
     mutate: (count = 1) => {
-      root.attributes.push({ name: 'class', value: 'changed-after-timeout' });
+      root.attributes.splice(0, root.attributes.length, {
+        name: 'class',
+        value: `changed-after-timeout-${mutationOrdinal++}`,
+      });
       for (const observer of observers)
         if (observer.connected)
           observer.callback(
@@ -75,6 +79,81 @@ async function candidate() {
 }
 afterEach(() => vi.useRealTimers());
 describe.skipIf(!sdkSource)('candidate SDK and adapter local contract', () => {
+  test('counts detached history and the current buffer against one event budget', async () => {
+    vi.useFakeTimers();
+    const f = await candidate();
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysOnErrorSampleRate: 1,
+      limits: { maxEvents: 7 },
+    });
+    c.attachRoot(f.runtime);
+    f.mutate();
+    c.detachRoot();
+    c.attachRoot(f.runtime);
+    expect(c.getSnapshot().eventCount).toBeLessThanOrEqual(7);
+    f.mutate();
+    expect(c.getSnapshot().eventCount).toBeLessThanOrEqual(7);
+    f.emitBeforeSend(error());
+    await settle();
+    const events = JSON.parse(f.sendEnvelope.mock.calls[0]![0][1][1][1].split('\n')[1]);
+    expect(events.some((event: { type: number }) => event.type === 2)).toBe(true);
+    expect(events.length).toBeLessThanOrEqual(7);
+    c.destroy();
+  });
+
+  test('promotes a rolling buffer without a second checkpoint or observer', async () => {
+    vi.useFakeTimers();
+    const f = await candidate();
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysOnErrorSampleRate: 1,
+    });
+    c.attachRoot(f.runtime);
+    f.emitBeforeSend(error());
+    await settle();
+    expect(f.controllers).toHaveLength(1);
+    expect(f.controllers[0]!.getCapture().events).toHaveLength(0);
+    f.mutate();
+    await c.flush();
+    const records = f.sendEnvelope.mock.calls.map((call) =>
+      JSON.parse(call[0][1][1][1].split('\n')[1]),
+    );
+    expect(records.flat().filter((event: { type: number }) => event.type === 2)).toHaveLength(1);
+    expect(records[1].some((event: { type: number }) => event.type === 3)).toBe(true);
+    expect(f.sendEnvelope.mock.calls.map((call) => call[0][1][0][1].segment_id)).toEqual([0, 1]);
+    expect(f.active()).toBe(1);
+    c.destroy();
+  });
+
+  test('flushes before an event-count overflow and preserves the pending increment', async () => {
+    vi.useFakeTimers();
+    const f = await candidate();
+    const c = new ReplayCoordinator({
+      sdk: f.sdk,
+      client: f.sdk.getClient()!,
+      replaysSessionSampleRate: 1,
+      limits: { maxEvents: 4 },
+    });
+    c.attachRoot(f.runtime);
+    for (let index = 0; index < 10; index++) {
+      f.mutate();
+      await settle();
+    }
+    await c.flush();
+    const records = f.sendEnvelope.mock.calls.map((call) =>
+      JSON.parse(call[0][1][1][1].split('\n')[1]),
+    );
+    expect(records.length).toBeGreaterThan(1);
+    expect(records.flat().filter((event: { type: number }) => event.type === 2)).toHaveLength(1);
+    expect(records.flat().filter((event: { type: number }) => event.type === 3)).toHaveLength(10);
+    expect(f.controllers).toHaveLength(1);
+    expect(c.getSnapshot()).toMatchObject({ state: 'session', recording: true });
+    c.destroy();
+  });
+
   test('captures mutations after the old five-minute buffer deadline', async () => {
     vi.useFakeTimers();
     const f = await candidate();
@@ -134,6 +213,7 @@ describe.skipIf(!sdkSource)('candidate SDK and adapter local contract', () => {
     f.emitBeforeSend(error());
     await settle();
     let finish!: (value: unknown) => void;
+    f.mutate();
     f.sendEnvelope.mockImplementationOnce(
       () =>
         new Promise((resolve) => {

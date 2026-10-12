@@ -1,3 +1,4 @@
+import type { ReplayCompressionOptions } from '../compression';
 import type { ReplayDeliveryOptions, ReplayDeliverySnapshot } from './delivery';
 import type { TaroReplayContext, TaroReplayMetadata } from '../types';
 import type { Event } from '@sentry/core';
@@ -47,6 +48,8 @@ export interface ReplayCoordinatorOptions extends TaroReplayNetworkOptions {
   /** Session segments are drained without replacing observers when supported by the SDK. */
   flushIntervalMs?: number;
   delivery?: ReplayDeliveryOptions;
+  /** Optional WeChat worker. Omit to retain uncompressed Replay delivery. */
+  compression?: ReplayCompressionOptions;
   beforeErrorSampling?: (event: ReplayAwareEvent) => boolean;
   getMetadata?: (context: TaroReplayContext) => TaroReplayMetadata | undefined;
   onError?: (error: Error) => void;

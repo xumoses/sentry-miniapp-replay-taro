@@ -33,7 +33,8 @@
       "import": "./dist/taro-lifecycle.mjs",
       "require": "./dist/taro-lifecycle.cjs.js"
     },
-    "./devtools/server": "./devtools/server.cjs"
+    "./devtools/server": "./devtools/server.cjs",
+    "./worker": "./dist/worker/replay-compression.js"
   },
   "bin": {
     "sentry-miniapp-replay-taro-viewer": "devtools/server.cjs"
@@ -47,7 +48,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "vp build && tsc -p tsconfig.build.json",
+    "build": "vp build && node scripts/build-worker.cjs && node scripts/verify-worker.cjs && tsc -p tsconfig.build.json",
     "check": "vp check",
     "check:fix": "vp check --fix",
     "test": "vp test run",
@@ -88,6 +89,7 @@
     "@types/node": "^20.19.11",
     "@types/react": "^18.3.12",
     "@xumoses/sentry-miniapp": "1.13.1-beta.3",
+    "fflate": "0.8.2",
     "react": "^18.3.1",
     "typescript": "^7.0.2",
     "vite": "catalog:",

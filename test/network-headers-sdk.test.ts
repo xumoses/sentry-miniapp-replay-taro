@@ -186,7 +186,7 @@ describe.skipIf(!sdkSource)('candidate network header SDK and adapter contract',
     });
     await settle();
     expect(integration.bridge.getSnapshot().state).toBe('session');
-    expect(f.controllers).toHaveLength(3);
+    expect(f.controllers).toHaveLength(2); // Promotion retains the current observer.
     expect(f.sendEnvelope.mock.calls[0]![0][1][1][1]).toContain('synthetic-1');
     f.emitBreadcrumb(network());
     await integration.bridge.flush();

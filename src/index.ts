@@ -38,3 +38,9 @@ export type {
 } from './types';
 
 export type { ReplayDeliveryOptions, ReplayDeliverySnapshot } from './coordinator/delivery';
+
+export type {
+  ReplayCompressionOptions,
+  ReplayCompressionSnapshot,
+  ReplayWorker,
+} from './compression';
