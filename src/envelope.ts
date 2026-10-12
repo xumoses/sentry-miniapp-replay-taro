@@ -1,5 +1,6 @@
 import type { DsnComponents, ReplayEnvelope, ReplayEvent, SdkInfo } from '@sentry/core';
 
+import { mergeReplayContexts } from './metadata';
 import type { SentryReplayClient, TaroReplayCapture } from './types';
 
 /** Counts UTF-8 bytes without TextEncoder, which is absent in some mini program runtimes. */
@@ -44,7 +45,7 @@ export interface ReplayEnvelopeOptions {
 }
 
 export interface ReplaySendResult {
-  status: 'accepted' | 'handed-off' | 'rejected';
+  status: 'accepted' | 'handed-off' | 'rejected' | 'cancelled';
   statusCode?: number;
 }
 
@@ -76,7 +77,7 @@ export function createReplayEnvelope(
     ...(metadata.sdk ? { sdk: metadata.sdk } : {}),
     ...(metadata.user ? { user: metadata.user } : {}),
     ...(metadata.tags ? { tags: metadata.tags } : {}),
-    ...(metadata.contexts ? { contexts: metadata.contexts } : {}),
+    ...(metadata.contexts ? { contexts: mergeReplayContexts({}, metadata.contexts) } : {}),
   };
   const recording = serializeReplayRecording(capture, options.segmentId || 0);
 
@@ -98,7 +99,26 @@ export async function sendReplayCapture(
   client: SentryReplayClient,
   capture: TaroReplayCapture,
   options: ReplayEnvelopeOptions = {},
+  shouldSend: () => boolean = () => true,
 ): Promise<ReplaySendResult> {
+  if (client.getRuntimeContexts && client.getOptions?.().enableSystemInfo !== false) {
+    // The client owns the deadline/cache. Empty or unavailable defaults are
+    // authoritative: never replace them with a simulated phone's wx metadata.
+    try {
+      const defaults = await client.getRuntimeContexts();
+      capture = {
+        ...capture,
+        metadata: {
+          ...capture.metadata,
+          contexts: mergeReplayContexts(defaults, capture.metadata?.contexts),
+        },
+      };
+    } catch {
+      // Metadata failure must not prevent delivery or enable a second probe.
+    }
+  }
+  // Reset/consent may change while the shared provider is pending.
+  if (!shouldSend()) return { status: 'cancelled' };
   const dsnComponents = client.getDsn?.();
   const dsn = dsnComponents ? serializeDsn(dsnComponents) : undefined;
   const envelope = createReplayEnvelope(capture, {

@@ -6,9 +6,11 @@ import {
 import type { Breadcrumb, BreadcrumbHint } from '@sentry/core';
 
 import { sendReplayCapture } from './envelope';
+import { mergeReplayContexts } from './metadata';
 import { sanitizeBreadcrumb, sanitizeRecord, sanitizeUrl } from './privacy';
 import type {
   CreateTaroReplayOptions,
+  SentryReplayClient,
   TaroReplayCapture,
   TaroReplayContext,
   TaroReplayControllerView,
@@ -63,7 +65,7 @@ function mergeMetadata(
       ? { tags: { ...defaults.tags, ...safeCustom?.tags } }
       : {}),
     ...(defaults.contexts || safeCustom?.contexts
-      ? { contexts: { ...defaults.contexts, ...safeCustom?.contexts } }
+      ? { contexts: mergeReplayContexts(defaults.contexts, safeCustom?.contexts, true) }
       : {}),
   };
   if (allowUser && custom?.user) result.user = sanitizeRecord(custom.user);
@@ -86,6 +88,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
   let detachBreadcrumb: (() => void) | undefined;
   let finalization: Promise<void> | undefined;
   let terminal = false;
+  let recordingClient: SentryReplayClient | undefined;
 
   const reportError = (error: unknown): void => {
     try {
@@ -150,7 +153,7 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       }
 
       if (!shouldSendCapture(options, capture.stopReason)) return;
-      const client = options.sdk.getClient();
+      const client = recordingClient;
       if (!client || typeof client.sendEnvelope !== 'function') {
         throw new Error(
           '[sentry-miniapp-replay-taro] Cannot send Replay without an initialized client',
@@ -181,18 +184,30 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
       }
 
       const client = options.sdk.getClient();
+      recordingClient = client;
       const clientOptions = client?.getOptions?.();
       const platform = normalizePlatform(safely(() => options.runtime.getEnv?.()));
       const windowInfo = safely(() => options.runtime.getWindowInfo?.()) || {};
-      const account = safely(() => options.runtime.getAccountInfoSync?.());
-      const appBase = safely(() => options.runtime.getAppBaseInfo?.());
-      const device = safely(() => options.runtime.getDeviceInfo?.());
+      const useLegacyDefaults =
+        clientOptions?.enableSystemInfo !== false && !client?.getRuntimeContexts;
+      const account = useLegacyDefaults
+        ? safely(() => options.runtime.getAccountInfoSync?.())
+        : undefined;
+      const appBase = useLegacyDefaults
+        ? safely(() => options.runtime.getAppBaseInfo?.())
+        : undefined;
+      const device = useLegacyDefaults
+        ? safely(() => options.runtime.getDeviceInfo?.())
+        : undefined;
+      const simulator = device?.platform?.toLowerCase() === 'devtools';
       const system = device?.system?.match(/^([a-zA-Z][a-zA-Z ]*?)\s*([\d.]+)$/);
-      const os = system
-        ? { name: system[1]?.trim(), version: system[2] }
-        : device?.system
-          ? { name: device.system }
-          : undefined;
+      const os = simulator
+        ? { name: 'unknown' }
+        : system
+          ? { name: system[1]?.trim(), version: system[2] }
+          : device?.system
+            ? { name: device.system }
+            : undefined;
       const href = sanitizeUrl(options.href?.(route) || `${SYNTHETIC_ORIGIN}/${route}`);
       const context: TaroReplayContext = {
         route,
@@ -228,10 +243,14 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
               ? {
                   device: {
                     type: 'device',
-                    ...(device.brand ? { brand: device.brand } : {}),
-                    ...(device.model ? { model: device.model } : {}),
+                    ...(simulator
+                      ? { simulator: true }
+                      : {
+                          ...(device.brand ? { brand: device.brand } : {}),
+                          ...(device.model ? { model: device.model } : {}),
+                        }),
                     ...(appBase?.language ? { language: appBase.language } : {}),
-                    ...(windowInfo.screenWidth && windowInfo.screenHeight
+                    ...(!simulator && windowInfo.screenWidth && windowInfo.screenHeight
                       ? {
                           screen_resolution: `${windowInfo.screenWidth}x${windowInfo.screenHeight}`,
                         }
@@ -240,12 +259,28 @@ export function createTaroReplay(options: CreateTaroReplayOptions): TaroReplayHa
                 }
               : {}),
             ...(os ? { os: { type: 'os', ...os } } : {}),
-            ...(platform === 'wechat'
+            ...(useLegacyDefaults && platform === 'wechat'
               ? {
                   browser: {
                     type: 'browser',
-                    name: 'WeChat',
+                    name: simulator ? 'WeChat DevTools' : 'WeChat',
+                    ...(!simulator && appBase?.version ? { version: appBase.version } : {}),
+                  },
+                }
+              : {}),
+            ...(simulator
+              ? {
+                  miniapp_simulator: {
+                    ...(device?.brand ? { brand: device.brand } : {}),
+                    ...(device?.model ? { model: device.model } : {}),
+                    ...(device?.system ? { system: device.system } : {}),
+                    ...(device?.platform ? { platform: device.platform } : {}),
                     ...(appBase?.version ? { version: appBase.version } : {}),
+                    ...(windowInfo.screenWidth && windowInfo.screenHeight
+                      ? {
+                          screen_resolution: `${windowInfo.screenWidth}x${windowInfo.screenHeight}`,
+                        }
+                      : {}),
                   },
                 }
               : {}),

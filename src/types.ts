@@ -131,7 +131,10 @@ export interface SentryReplayClient {
     environment?: string | undefined;
     release?: string | undefined;
     dist?: string | undefined;
+    enableSystemInfo?: boolean | undefined;
   };
+  /** Cached technical defaults shared with errors; never scope/user identity. */
+  getRuntimeContexts?(): PromiseLike<Record<string, Record<string, unknown>>>;
   on?(
     hook: 'beforeAddBreadcrumb',
     callback: (breadcrumb: Breadcrumb, hint?: BreadcrumbHint) => void,

@@ -140,6 +140,17 @@ hook 会在 Taro `useReady` / `useDidShow` 时寻找当前页面的 `$taroPath` 
 显式 runtime 可通过可选的 `getReplayStyles(route)` 和 `getReplayImageSources(route)`
 提供同一份编译样式与可信静态图片映射。
 
+Replay 发送前会复用配套 SDK 客户端的 `getRuntimeContexts()` 技术信息缓存，与异常
+事件共享 `device`、`os`、`browser`、`app`、`runtime` 和小程序宿主信息。录制启动仍为同步；
+开发者工具中的宿主系统版本由 SDK 有界等待 Client Hints（最多 200ms），不会把模拟
+iPhone 的 iOS 版本当作电脑系统，模拟参数单独放在 `miniapp_simulator`。缺少可信信息
+时保留已知系统名称或未知值，不猜测版本。普通设备继续使用小程序平台 API。
+
+`getMetadata().contexts` 的显式字段会覆盖对应默认字段；不会自动读取 Sentry scope 的
+user 或其它自定义 context。SDK 的 `enableSystemInfo: false` 同样关闭 Replay 的系统
+元数据补采，录制所需的页面视口尺寸仍保留。旧 SDK 无共享 provider 时使用保守的平台
+API 回退，开发者工具中的真实宿主系统记为未知。显式自定义 metadata 仍受现有隐私过滤。
+
 ## 隐私默认值
 
 默认配置偏向最小采集：

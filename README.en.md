@@ -141,6 +141,20 @@ The defaults minimize captured data:
 Only set `privacy.maskAllText: false` when every value rendered by the page is
 known synthetic test data. Do not copy that option into a real user flow.
 
+Replay waits for the supporting client's cached `getRuntimeContexts()` before
+sending, sharing technical device, OS, browser, app, runtime and miniapp host
+defaults with error events. Recording still starts synchronously. In developer
+tools, the SDK bounds the Client Hints wait to 200ms; emulated phone data belongs
+to `miniapp_simulator`, never the host OS. Missing trustworthy details remain
+unknown or name-only. Normal devices continue to use miniapp platform APIs.
+
+Explicit `getMetadata().contexts` fields override matching defaults. Replay never
+inherits scope users or arbitrary scope contexts. SDK `enableSystemInfo: false`
+also disables Replay system metadata collection; viewport dimensions required for
+recording remain available. Older SDKs without the shared provider use a
+conservative platform fallback and report an unknown host OS in developer tools.
+Explicit custom metadata remains subject to the existing privacy filters.
+
 ## Optional Replay network headers
 
 Request and response headers are off by default. A supporting SDK is required.

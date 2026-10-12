@@ -120,7 +120,12 @@ export class ReplayDelivery {
             if (item.generation !== this.#generation || !this.#isEnabled()) break;
             let result;
             try {
-              result = await sendReplayCapture(this.#client, item.capture, item.options);
+              result = await sendReplayCapture(
+                this.#client,
+                item.capture,
+                item.options,
+                () => item.generation === this.#generation && this.#isEnabled(),
+              );
             } catch (error) {
               if (item.generation !== this.#generation) break;
               if (attempt >= this.#limits.maxRetries) throw error;
@@ -137,6 +142,7 @@ export class ReplayDelivery {
             this.#snapshot.lastStatus = result.status;
             if (result.statusCode !== undefined) this.#snapshot.lastStatusCode = result.statusCode;
             else delete this.#snapshot.lastStatusCode;
+            if (result.status === 'cancelled') break;
             if (result.status === 'rejected')
               throw new Error(`Replay transport rejected segment (${result.statusCode})`);
             if (result.status === 'accepted') this.#snapshot.acceptedSegments++;
