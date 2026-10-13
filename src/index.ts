@@ -44,3 +44,5 @@ export type {
   ReplayCompressionSnapshot,
   ReplayWorker,
 } from './compression';
+
+export { decodeReplayAssetData } from './replay-assets';

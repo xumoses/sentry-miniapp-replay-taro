@@ -123,6 +123,36 @@ Explicit runtime adapters may provide the same optional `getReplayStyles(route)`
 and `getReplayImageSources(route)` functions for compiled CSS and trusted static
 images.
 
+## Compressed build-time assets
+
+`decodeReplayAssetData(encoded, byteLength)` decodes host-generated static JSON
+assets to reduce package space used by repeated styles or trusted image maps.
+Encode in this order: `JSON.stringify → UTF-8 → zlib → base64`. The
+`byteLength` argument is the uncompressed JSON length in UTF-8 bytes, not its
+JavaScript string length. For example, in the host build:
+
+```js
+import { deflateSync } from 'node:zlib';
+
+const json = JSON.stringify({ styles: { '/pages/example': '.chart{color:red}' } });
+const byteLength = Buffer.byteLength(json, 'utf8');
+const encoded = deflateSync(Buffer.from(json, 'utf8')).toString('base64');
+```
+
+Import `decodeReplayAssetData` from the root entry at runtime, validate the
+returned shape, then supply values to `getReplayStyles` or
+`getReplayImageSources`. Decode on demand and cache the result. When the native
+host already uses the root package, expose this function through your own bridge
+so Taro can keep using the lightweight lifecycle entry.
+
+This helper only decodes data; it executes no JavaScript, installs no globals,
+and requires no `Buffer`, `atob` or `TextDecoder`. Both compressed input and
+decoded UTF-8 data are limited to 2 MiB. Invalid declared lengths, zlib checksums,
+UTF-8 or JSON throw; catch failures in the host and fall back to an empty asset
+map. Use trusted build-time assets, not remote content. The helper does not
+audit CSS or images, expand the static asset allowlist, or change masking and
+media privacy rules. Asset compression is optional for existing functionality.
+
 ## Privacy defaults
 
 The defaults minimize captured data:

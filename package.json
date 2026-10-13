@@ -48,7 +48,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "vp build && node scripts/build-worker.cjs && node scripts/verify-worker.cjs && tsc -p tsconfig.build.json",
+    "build": "vp build && node scripts/build-worker.cjs && node scripts/verify-worker.cjs && tsc -p tsconfig.build.json && node scripts/verify-assets.cjs",
     "check": "vp check",
     "check:fix": "vp check --fix",
     "test": "vp test run",

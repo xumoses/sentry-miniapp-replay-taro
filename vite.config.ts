@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite-plus';
 
@@ -161,6 +162,16 @@ export default defineConfig({
     },
     rolldownOptions: {
       external: ['@sentry/core', '@tarojs/runtime', '@tarojs/taro', 'react'],
+      output: {
+        comments: { legal: true },
+        // Preserve the bundled dependency notice when hosts copy only runtime JS.
+        banner: (chunk) =>
+          chunk.moduleIds.some((id) => id.includes('/fflate/'))
+            ? '/*! Bundled fflate license:\n' +
+              readFileSync(resolve(__dirname, 'node_modules/fflate/LICENSE'), 'utf8') +
+              '\n*/'
+            : '',
+      },
     },
     sourcemap: true,
   },

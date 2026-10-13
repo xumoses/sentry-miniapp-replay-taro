@@ -151,6 +151,31 @@ user 或其它自定义 context。SDK 的 `enableSystemInfo: false` 同样关闭
 元数据补采，录制所需的页面视口尺寸仍保留。旧 SDK 无共享 provider 时使用保守的平台
 API 回退，开发者工具中的真实宿主系统记为未知。显式自定义 metadata 仍受现有隐私过滤。
 
+## 构建期静态资源压缩
+
+`decodeReplayAssetData(encoded, byteLength)` 可解码由宿主构建生成的静态 JSON 数据，
+用于减少重复样式或可信图片映射占用的代码包体积。编码顺序必须是
+`JSON.stringify → UTF-8 → zlib → base64`；`byteLength` 是压缩前 JSON 的 UTF-8
+字节数，不是字符串长度。构建端例如：
+
+```js
+import { deflateSync } from 'node:zlib';
+
+const json = JSON.stringify({ styles: { '/pages/example': '.chart{color:red}' } });
+const byteLength = Buffer.byteLength(json, 'utf8');
+const encoded = deflateSync(Buffer.from(json, 'utf8')).toString('base64');
+```
+
+运行端从主入口导入 `decodeReplayAssetData`，调用后校验返回值的结构，再交给
+`getReplayStyles` / `getReplayImageSources`；建议按需解码并缓存结果。若原生入口
+已使用主包，可把解码函数通过自己的 bridge 交给 Taro，继续使用轻量生命周期入口。
+
+此函数只解码数据，不执行 JavaScript，不安装全局对象，也不依赖 `Buffer`、
+`atob` 或 `TextDecoder`。压缩数据和解码后的 UTF-8 数据各限 2 MiB，校验声明长度、
+zlib 校验和、UTF-8 与 JSON，失败会抛出异常；宿主应捕获异常并回退为空资源映射。
+只用于可信的构建期资源，不是远程内容加载器。它不会审计 CSS/图片内容，也不会改变
+现有静态资源白名单、遮罩或媒体隐私规则。原始功能不要求启用资源压缩。
+
 ## 隐私默认值
 
 默认配置偏向最小采集：
