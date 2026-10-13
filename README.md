@@ -259,3 +259,18 @@ ingestion 结果。
 ## 可选 Worker 压缩
 
 微信宿主可配置 `compression: { workerPath: 'workers/sentry-replay.js' }`，并把包的 `./worker` 导出复制到 `app.json.workers` 目录。Worker 使用 Sentry 官方 zlib 录制格式，失败自动降级原始 JSON；原有内存限额保持不变。匹配 SDK 支持接近限额时提前发送增量分段，以及错误 buffer 晋升时复用 observer、避免立即重发完整快照。详见 [构建、生命周期和限制](./docs/worker-compression.md)。
+
+## GitHub Actions CI/CD
+
+开发使用 Node.js 26 和 `packageManager` 固定的 pnpm 版本。分支 push、PR 和手动触发
+CI 会依次执行 frozen-lockfile 安装、`pnpm run check`（格式、lint、类型）、测试、
+构建（包含 Worker 验证和声明生成）及 `npm pack --dry-run`。
+
+发布与 SDK 一样由 `v*-beta.*` tag 触发，并重新执行完整检查。发布前在本仓库
+Settings → Secrets and variables → Actions 配置 `NPM_TOKEN`；其他仓库的 secret
+不会自动共享。tag 必须与 `package.json` 版本完全对应，例如 `v0.1.0-beta.5`。
+检查通过后以 public access、provenance 和 `beta` dist-tag 发布，保持 `latest` 不变。
+
+每个 tag 的发布串行执行。npm 版本不可覆盖：若发布步骤已成功，重跑前先核对 registry，
+不要再次发布同一版本；若发布后源码有变化，必须使用新的版本和 tag。npm 提示后处理时，
+仍需等待准确版本及 tarball 可下载并核对完整性，CI 成功不替代这一检查。

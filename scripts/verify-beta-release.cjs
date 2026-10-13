@@ -23,6 +23,14 @@ if (packageJson.publishConfig?.tag !== 'beta') {
 if (packageJson.publishConfig?.registry !== 'https://registry.npmjs.org/') {
   failures.push('publishConfig.registry must be https://registry.npmjs.org/');
 }
+if (
+  process.env.GITHUB_REF_TYPE === 'tag' &&
+  process.env.GITHUB_REF_NAME !== `v${packageJson.version}`
+) {
+  failures.push(
+    `tag must match package version v${packageJson.version}, got ${process.env.GITHUB_REF_NAME}`,
+  );
+}
 if (process.env.npm_config_tag && process.env.npm_config_tag !== 'beta') {
   failures.push(`publish tag must be beta, got ${process.env.npm_config_tag}`);
 }

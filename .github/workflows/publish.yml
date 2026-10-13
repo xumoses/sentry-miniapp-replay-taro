@@ -1,0 +1,60 @@
+name: CD - Publish to NPM
+
+on:
+  push:
+    tags:
+      - 'v*-beta.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26.x'
+          package-manager-cache: false
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+      - name: Verify tag and beta release policy
+        run: node scripts/verify-beta-release.cjs
+      - name: Check npm credential is configured
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::Configure the repository Actions secret NPM_TOKEN before publishing."
+            exit 1
+          fi
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting, lint and types
+        run: pnpm run check
+      - name: Run tests
+        run: pnpm test
+      - name: Build project and Worker
+        run: pnpm run build
+      - name: Check package contents
+        run: npm pack --dry-run
+      - name: Configure npm authentication
+        uses: actions/setup-node@v7
+        with:
+          node-version: '26.x'
+          registry-url: 'https://registry.npmjs.org/'
+          package-manager-cache: false
+      - name: Publish to NPM
+        run: npm publish --access public --provenance --tag beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

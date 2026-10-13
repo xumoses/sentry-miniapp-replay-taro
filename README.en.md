@@ -279,3 +279,21 @@ or access to native component DOM.
 ## Optional Worker compression
 
 A WeChat host can configure `compression: { workerPath: 'workers/sentry-replay.js' }` after copying the `./worker` export into its `app.json.workers` directory. This uses Sentry's zlib recording format with raw JSON fallback and unchanged memory limits. A matching SDK drains session segments before overflow and promotes error buffers without immediately repeating the full snapshot. See [host setup, lifecycle and limits](./docs/worker-compression.md).
+
+## GitHub Actions CI/CD
+
+Development uses Node.js 26 and the pnpm version pinned in `packageManager`. Branch
+pushes, pull requests and manual CI runs perform frozen-lockfile installation,
+`pnpm run check` (formatting, lint and types), tests, the build (including Worker
+verification and declarations), and `npm pack --dry-run`.
+
+Like the SDK, publishing runs on `v*-beta.*` tags and repeats all checks. Configure
+`NPM_TOKEN` under this repository's Settings → Secrets and variables → Actions;
+secrets in another repository are not shared automatically. The tag must exactly
+match the package version, for example `v0.1.0-beta.5`. Publishing uses public
+access, provenance and the `beta` dist-tag, leaving `latest` unchanged.
+
+Publishing is serialized per tag. npm versions cannot be overwritten: check the
+registry before retrying a successful publish, and use a new version and tag for
+changed source. When npm reports post-processing, wait for the exact version and
+tarball to become available and verify integrity separately from CI success.
