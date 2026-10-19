@@ -30,14 +30,6 @@ jobs:
         uses: pnpm/action-setup@v4
       - name: Verify tag and beta release policy
         run: node scripts/verify-beta-release.cjs
-      - name: Check npm credential is configured
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::Configure the repository Actions secret NPM_TOKEN before publishing."
-            exit 1
-          fi
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Check formatting, lint and types
@@ -54,7 +46,6 @@ jobs:
           node-version: '26.x'
           registry-url: 'https://registry.npmjs.org/'
           package-manager-cache: false
+      # npm Trusted Publishing authenticates this workflow through OIDC.
       - name: Publish to NPM
         run: npm publish --access public --provenance --tag beta
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
